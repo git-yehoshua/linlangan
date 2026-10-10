@@ -88,36 +88,36 @@ header { position: relative; padding-top: 0.5rem; }
   font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em;
   font-size: var(--text-sm); color: var(--color-muted); margin: 0;
 }
-/* Paged name editor: prev / input / next */
-.editor { display: flex; align-items: stretch; gap: 0.5rem; margin: 0.5rem 0; }
-.editor > button {
-  flex: none; width: var(--tap-target); min-height: var(--tap-target);
-  border-radius: 50%; border: 2px solid var(--color-ink);
+.avatar-big { width: 7rem; height: 7rem; }
+.offscreen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+input.nick {
+  min-height: var(--tap-target); width: 100%;
+  border-radius: var(--radius-pill); border: 2px solid var(--color-ink);
   background: var(--color-white); color: var(--color-ink);
-  font-size: 1.75rem; line-height: 1; cursor: pointer; padding: 0;
+  font-size: 1.25rem; font-weight: 600; font-family: var(--font-body);
+  padding: 0.5rem 1rem; text-align: center;
 }
-.editor > button:disabled { opacity: 0.3; cursor: not-allowed; }
-.editor-main { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; }
-.editor-main label { font-weight: 600; font-size: var(--text-sm); text-align: center; }
-.editor-main input {
-  min-height: var(--tap-target); border-radius: var(--radius-pill);
-  border: 2px solid var(--color-ink); background: var(--color-white);
-  color: var(--color-ink); font-size: 1.25rem; font-family: var(--font-body); font-weight: 600;
-  padding: 0.5rem 1rem; width: 100%; text-align: center;
+/* Small Prev / Next buttons under the main button */
+.mini-nav { display: flex; justify-content: space-between; gap: 0.5rem; }
+.btn-mini {
+  min-height: var(--tap-target); min-width: 6rem; padding: 0.5rem 1.25rem;
+  border: 0; border-radius: var(--radius-button);
+  background: var(--color-ink); color: var(--color-white);
+  font-family: var(--font-display); font-size: var(--text-button);
+  letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer;
+  transition: transform var(--duration-fast), opacity var(--duration-fast);
 }
-.req-hint { font-size: var(--text-sm); color: var(--color-muted); margin: 0; text-align: center; }
-/* Preview roster: read-only chips, one per added player */
-.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin: 0.5rem 0; }
-.chip {
-  display: inline-block; min-height: 2.75rem; min-width: 3rem; padding: 0.25rem 0.75rem;
-  border-radius: 999px; border: 2px solid var(--color-ink);
-  background: var(--color-white); color: var(--color-ink);
-  font-family: var(--font-body); font-weight: 600; font-size: var(--text-sm);
-  line-height: 2.1rem; text-align: center;
+.btn-mini:active:not(:disabled) { transform: scale(0.97); }
+.btn-mini:disabled { opacity: 0.35; cursor: not-allowed; }
+/* Added-players review roster */
+.roster { list-style: none; margin: 0.5rem 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.5rem; }
+.roster li {
+  display: flex; align-items: center; gap: 0.75rem;
+  min-height: var(--tap-target); padding: 0.35rem 1rem;
+  border: 2px solid var(--color-ink); border-radius: var(--radius-pill);
+  background: var(--color-white); font-weight: 600; font-size: 1.1rem;
 }
-.chip.filled { background: var(--color-ink); color: var(--color-white); }
-.chip.current { outline: 3px solid var(--color-ink); outline-offset: 2px; }
-.chip img { width: 1.75rem; height: 1.75rem; vertical-align: middle; margin-right: 0.35rem; }
+.roster img { width: 2.5rem; height: 2.5rem; flex: none; }
 /* Avatars (self-hosted DiceBear, assigned by player order) */
 .avatar { width: 4rem; height: 4rem; }
 .face.centered .avatar { width: 4.5rem; height: 4.5rem; }

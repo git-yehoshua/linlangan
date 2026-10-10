@@ -258,14 +258,16 @@
   }
 
   // Screen 1: setup wizard.
-  // Step 1 (Players): stepper + one-at-a-time name editor with prev/next
-  // navigation + a preview strip of all players. Step 2 (Options): dedicated
-  // place for mode, difficulty, blank and timer pickers.
+  // Step 1 (Players): stepper + big avatar preview + nickname input,
+  // main Next button plus small Prev/Next buttons below.
+  // Step 2 (Added players): review roster, Confirm to continue.
+  // Step 3 (Options): dedicated place for mode, difficulty, blank and timer.
   function vSetup() {
     var cfg = S.config;
     while (S.setupNames.length < 12) S.setupNames.push("");
     if (S.setupEdit >= cfg.playerCount) S.setupEdit = cfg.playerCount - 1;
     if (S.setupStep === 1) return vSetupPlayers(cfg);
+    if (S.setupStep === 2) return vSetupReview(cfg);
     return vSetupOptions(cfg);
   }
 
@@ -294,55 +296,40 @@
     };
   }
 
-  function chipsHtml(cfg) {
-    // Read-only roster preview: every added player, no navigation.
-    var out = "";
-    for (var i = 0; i < cfg.playerCount; i++) {
-      var label = S.setupNames[i] || ("P" + (i + 1));
-      out += '<span class="chip' + (S.setupNames[i] ? " filled" : "") +
-        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '">' +
-        '<img src="' + avatarFor(i) + '" alt="" width="28" height="28">' + esc(label) + "</span>";
-    }
-    return '<div class="chips" role="group" aria-label="Added players">' + out + "</div>";
-  }
-
   function vSetupPlayers(cfg) {
-    var last = S.setupEdit >= cfg.playerCount - 1;
     var filled = S.setupNames[S.setupEdit].trim() !== "";
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
-      '<p class="step-tag">Step 1 of 2 · Players</p>' +
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
+      '<p class="step-tag">Step 1 of 3 · Players</p>' +
       '<h2 class="screen-title">Who is playing?</h2>' +
       stepperHtml(cfg) +
-      '<div class="editor">' +
-      '<button id="ed-back" aria-label="Back to previous player"' + (S.setupEdit === 0 ? " disabled" : "") + ">‹</button>" +
-      '<div class="editor-main">' +
-      '<label for="pname">Player ' + (S.setupEdit + 1) + " of " + cfg.playerCount + "</label>" +
-      '<input id="pname" maxlength="24" value="' + esc(S.setupNames[S.setupEdit]) + '"' +
+      '<img class="avatar-big" src="' + avatarFor(S.setupEdit) + '" alt="">' +
+      '<p class="muted">Player ' + (S.setupEdit + 1) + " of " + cfg.playerCount + "</p>" +
+      '<label class="offscreen" for="pname">Nickname for player ' + (S.setupEdit + 1) + "</label>" +
+      '<input id="pname" class="nick" maxlength="24" value="' + esc(S.setupNames[S.setupEdit]) + '"' +
       ' placeholder="Type a nickname" autocomplete="off">' +
-      "</div>" +
-      "</div>" +
       '<p class="req-hint" id="req-hint">Nickname required to continue.</p>' +
-      chipsHtml(cfg) +
       "</div></div>" +
       '<button class="btn" id="b-next-player"' + (filled ? "" : " disabled") + ">" +
-      SKIP_ICON + (last ? "Continue" : "Next") + "</button>";
+      SKIP_ICON + "Next</button>" +
+      '<div class="mini-nav">' +
+      '<button class="btn-mini" id="ed-prev"' + (S.setupEdit === 0 ? " disabled" : "") + ">Prev</button>" +
+      '<button class="btn-mini" id="ed-next"' + (filled ? "" : " disabled") + ">Next</button>" +
+      "</div>";
 
     wireStepper(cfg);
     var input = document.getElementById("pname");
     var nextBtn = document.getElementById("b-next-player");
+    var nextMini = document.getElementById("ed-next");
     input.oninput = function () {
-      nextBtn.disabled = input.value.trim() === "";
+      var ok = input.value.trim() !== "";
+      nextBtn.disabled = !ok;
+      nextMini.disabled = !ok;
     };
-    document.getElementById("ed-back").onclick = function () {
-      saveEditor(cfg);
-      S.setupEdit = Math.max(0, S.setupEdit - 1);
-      render();
-    };
-    nextBtn.onclick = function () {
+    function advance() {
       saveEditor(cfg);
       if (S.setupNames[S.setupEdit].trim() === "") return; // nicknames are required
-      if (last) {
+      if (S.setupEdit >= cfg.playerCount - 1) {
         // Safety net: never leave an unnamed player behind.
         for (var k = 0; k < cfg.playerCount; k++) {
           if (!S.setupNames[k].trim()) { S.setupEdit = k; render(); return; }
@@ -353,6 +340,38 @@
         S.setupEdit = Math.min(cfg.playerCount - 1, S.setupEdit + 1);
         render();
       }
+    }
+    nextBtn.onclick = advance;
+    nextMini.onclick = advance;
+    document.getElementById("ed-prev").onclick = function () {
+      saveEditor(cfg);
+      S.setupEdit = Math.max(0, S.setupEdit - 1);
+      render();
+    };
+  }
+
+  function vSetupReview(cfg) {
+    var rows = "";
+    for (var i = 0; i < cfg.playerCount; i++) {
+      rows += '<li><img src="' + avatarFor(i) + '" alt="" width="40" height="40">' +
+        esc(S.setupNames[i]) + "</li>";
+    }
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+      '<p class="step-tag">Step 2 of 3 · Review</p>' +
+      '<h2 class="screen-title">Added players</h2>' +
+      '<ul class="roster">' + rows + "</ul>" +
+      "</div></div>" +
+      '<button class="btn" id="b-confirm-roster">' + SKIP_ICON + "Confirm</button>" +
+      '<button class="btn secondary" id="b-back-players">‹ Back</button>';
+    document.getElementById("b-confirm-roster").onclick = function () {
+      S.setupStep = 3;
+      render();
+    };
+    document.getElementById("b-back-players").onclick = function () {
+      S.setupStep = 1;
+      S.setupEdit = 0;
+      render();
     };
   }
 
@@ -368,7 +387,7 @@
     var c = roleCounts(cfg.playerCount, cfg.blank);
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#F6EE8A"><div class="face">' +
-      '<p class="step-tag">Step 2 of 2 · Options</p>' +
+      '<p class="step-tag">Step 3 of 3 · Options</p>' +
       '<h2 class="screen-title">Game options</h2>' +
       '<p class="opt-label">Mode</p>' +
       '<div class="seg" role="group" aria-label="Game mode">' +
@@ -388,7 +407,7 @@
       " civilian(s), " + c.impostors + " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".</p>" +
       "</div></div>" +
       '<button class="btn" id="b-start">' + SKIP_ICON + "Start game</button>" +
-      '<button class="btn secondary" id="b-back-players">‹ Back</button>';
+      '<button class="btn secondary" id="b-back-review">‹ Back</button>';
 
     function preview() {
       var cc = roleCounts(cfg.playerCount, cfg.blank);
@@ -414,9 +433,8 @@
     }
     document.getElementById("opt-blank").onclick = flip("blank", "opt-blank");
     document.getElementById("opt-timer").onclick = flip("timer", "opt-timer");
-    document.getElementById("b-back-players").onclick = function () {
-      S.setupStep = 1;
-      S.setupEdit = 0;
+    document.getElementById("b-back-review").onclick = function () {
+      S.setupStep = 2;
       render();
     };
     document.getElementById("b-start").onclick = function () {
