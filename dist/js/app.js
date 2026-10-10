@@ -1,12 +1,18 @@
 /* The Impostor Game - vanilla JS, no frameworks.
    Single network call at startup (words.json); everything else is in memory.
-   State machine: setup > reveal > clues > vote > result > (next round | final). */
+   UI: 5 screens (Setup, Card, Play, Vote, Result) per UI_PROMPT.md.
+   Card reveal: swipe-up sheet adapted from reveal-demo.html (peek, don't keep).
+   State machine: setup > card > play > vote > result > (next round | final). */
 (function () {
   "use strict";
 
   var CLUE_SECONDS = 15;
-  var DISCUSS_MIN = 60;
-  var DISCUSS_MAX = 90;
+
+  // Card colors cycle by PLAYER ORDER, never by role (privacy rule).
+  var CARD_COLORS = ["#88F5F5", "#F4B3D4", "#F6EE8A", "#CDBDF7", "#A9F2B8", "#FFC8A2"];
+
+  var SKIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+    '<path d="M6 5l9 7-9 7V5zm10 0h2v14h-2V5z"/></svg>';
 
   var root = document.getElementById("app");
 
@@ -14,22 +20,23 @@
   var S = {
     phase: "setup",
     allWords: [],
-    config: { playerCount: 5, mode: "pair", blank: false, difficulty: "ALL" },
+    config: { playerCount: 5, mode: "pair", blank: false, difficulty: "ALL", timer: true },
+    setupNames: [],
     players: [],        // { name, role, alive, score }
-    word: null,         // current word entry
+    colors: [],         // card color per player-order index
+    word: null,
     usedIds: [],
-    revealIndex: 0,     // which player is receiving the device
-    revealOpen: false,  // word currently shown?
+    cardIndex: 0,
     clueRound: 1,
     maxRounds: 2,
     starter: 0,
     timerLeft: CLUE_SECONDS,
     timerId: null,
-    eliminated: [],     // player indexes voted out this round-game
-    revoted: false,     // tie revote already used for current vote
-    pendingElim: -1,    // selected but not yet confirmed
-    guessFor: -1,       // player index awaiting final-guess verdict
-    result: null        // { winner, reason }
+    selected: -1,       // vote pick (player index)
+    revoted: false,
+    guessFor: -1,
+    pendingBonus: null,
+    result: null
   };
 
   // ---------- helpers ----------
@@ -45,6 +52,10 @@
       var t = a[i]; a[i] = a[j]; a[j] = t;
     }
     return a;
+  }
+
+  function buzz(ms) {
+    try { if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
   }
 
   function loadUsed() {
@@ -63,7 +74,16 @@
   }
 
   function playerLabel(i) {
-    return S.players[i].name || ("Player " + (i + 1));
+    return (S.players[i] && S.players[i].name) || ("Player " + (i + 1));
+  }
+
+  function quitToSetup() {
+    if (S.phase === "setup") return;
+    if (window.confirm("Quit this round and go back to setup?")) {
+      stopTimer();
+      S.phase = "setup";
+      render();
+    }
   }
 
   // ---------- role counts (PRD section 3) ----------
@@ -112,12 +132,15 @@
     return w;
   }
 
-  // What each role sees on their card.
-  function cardFor(role, word) {
-    if (role === "blank") return "???";
-    if (role === "civilian") return word.civilian;
-    // impostor: similar word in pair mode, category hint in single mode
-    return word.impostor;
+  // Pill content per role. Pair-mode impostor sees an identical-looking word;
+  // single-mode impostor gets the red alert + category; blank gets "???".
+  function pillFor(role, word) {
+    if (role === "blank") return { cls: "", text: "???" };
+    if (role === "civilian") return { cls: "", text: word.civilian };
+    if (S.config.mode === "single") {
+      return { cls: "alert", text: "You are the impostor!", sub: word.impostor.replace(/^Hint:\s*/, "") };
+    }
+    return { cls: "", text: word.impostor };
   }
 
   // ---------- round setup ----------
@@ -127,38 +150,39 @@
     var n = cfg.playerCount;
     var word = pickWord();
     if (!word) {
-      root.innerHTML = '<div class="card"><h2>No words available</h2>' +
-        "<p>No words match this mode/difficulty. Try another filter.</p>" +
-        '<button id="b-back">Back to setup</button></div>';
+      root.innerHTML = '<div class="stage stage-pad" style="--card:#FFFFFF">' +
+        '<div class="face"><h2 class="screen-title">No words</h2>' +
+        "<p>Nothing matches this mode and difficulty. Try another filter.</p>" +
+        '<button class="btn" id="b-back">' + SKIP_ICON + "Back to setup</button></div></div>";
       document.getElementById("b-back").onclick = function () { S.phase = "setup"; render(); };
       return;
     }
     var roles = assignRoles(n, cfg.blank);
-    // Keep scores across rounds; (re)create players on first round or count change.
     if (S.players.length !== n) {
       S.players = [];
       for (var i = 0; i < n; i++) S.players.push({ name: "", role: roles[i], alive: true, score: 0 });
     } else {
       for (var k = 0; k < n; k++) { S.players[k].role = roles[k]; S.players[k].alive = true; }
     }
+    for (var j = 0; j < n; j++) S.players[j].name = S.setupNames[j] || "";
+    S.colors = [];
+    for (var c = 0; c < n; c++) S.colors.push(CARD_COLORS[c % CARD_COLORS.length]);
     S.word = word;
-    S.revealIndex = 0;
-    S.revealOpen = false;
+    S.cardIndex = 0;
     S.clueRound = 1;
     S.maxRounds = n >= 8 ? 3 : 2;
     S.starter = Math.floor(Math.random() * n);
     S.timerLeft = CLUE_SECONDS;
-    S.eliminated = [];
+    S.selected = -1;
     S.revoted = false;
-    S.pendingElim = -1;
     S.guessFor = -1;
+    S.pendingBonus = null;
     S.result = null;
-    S.phase = "reveal";
+    S.phase = "card";
     render();
   }
 
   // ---------- win check (PRD FR6) ----------
-  // Returns { winner, reason } or null when play continues.
   function checkWin() {
     var alive = S.players.filter(function (p) { return p.alive; });
     var aliveImp = alive.filter(function (p) { return p.role === "impostor"; }).length;
@@ -172,8 +196,7 @@
     return null;
   }
 
-  // ---------- scoring (PRD FR7) ----------
-  // opts: { guessCorrect: bool, guessBy: role, firstVoter: index|-1 }
+  // ---------- scoring (PRD FR7; blank correct guess = +3) ----------
   function applyScoring(outcome, opts) {
     opts = opts || {};
     if (outcome.winner === "civilians") {
@@ -181,18 +204,12 @@
         if (p.role === "civilian" && p.alive) p.score += 1;
       });
     } else if (outcome.winner === "impostors") {
-      if (opts.guessCorrect) {
-        // Eliminated impostor who guessed correctly: +2.
-        if (opts.guessBy === "impostor" && S.guessFor >= 0) S.players[S.guessFor].score += 2;
-        // Surviving impostor teammates share the win: +3 each.
-        S.players.forEach(function (p) {
-          if (p.role === "impostor" && p.alive) p.score += 3;
-        });
-      } else {
-        S.players.forEach(function (p) {
-          if (p.role === "impostor" && p.alive) p.score += 3;
-        });
+      if (opts.guessCorrect && opts.guessBy === "impostor" && S.guessFor >= 0) {
+        S.players[S.guessFor].score += 2;
       }
+      S.players.forEach(function (p) {
+        if (p.role === "impostor" && p.alive) p.score += 3;
+      });
     } else if (outcome.winner === "blank") {
       if (S.guessFor >= 0) S.players[S.guessFor].score += 3;
     }
@@ -200,260 +217,6 @@
         S.players[opts.firstVoter] && S.players[opts.firstVoter].role === "civilian") {
       S.players[opts.firstVoter].score += 1;
     }
-  }
-
-  // ---------- screens ----------
-  function render() {
-    stopTimer();
-    if (S.phase === "setup") return vSetup();
-    if (S.phase === "reveal") return vReveal();
-    if (S.phase === "clues") return vClues();
-    if (S.phase === "vote") return vVote();
-    if (S.phase === "guess") return vGuess();
-    if (S.phase === "result") return vResult();
-    if (S.phase === "final") return vFinal();
-  }
-
-  function namesField() {
-    var saved = S.players.map(function (p) { return p.name; }).join(", ");
-    return '<label for="f-names">Names (optional, comma-separated)</label>' +
-      '<input type="text" id="f-names" maxlength="200" value="' + esc(saved) + '" ' +
-      'placeholder="e.g. Ana, Ben, Cho, Dee, Eli">';
-  }
-
-  // FR1: setup screen
-  function vSetup() {
-    var cfg = S.config;
-    var modes = [["pair", "Word Pair"], ["single", "Single Word"]];
-    var diffs = [["ALL", "All"], ["E", "Easy"], ["M", "Medium"], ["H", "Hard"]];
-    var h = '<div class="card"><h2>Game setup</h2>' +
-      '<label for="f-count">Players (4&ndash;12)</label>' +
-      '<input type="number" id="f-count" min="4" max="12" value="' + cfg.playerCount + '">' +
-      namesField() +
-      '<label for="f-mode">Mode</label><select id="f-mode">' +
-      modes.map(function (m) {
-        return '<option value="' + m[0] + '"' + (cfg.mode === m[0] ? " selected" : "") + ">" + m[1] + "</option>";
-      }).join("") + "</select>" +
-      '<div class="checkbox-row"><input type="checkbox" id="f-blank"' + (cfg.blank ? " checked" : "") + ">" +
-      '<label for="f-blank">Include Blank role (needs 6+ players)</label></div>' +
-      "<fieldset><legend>Difficulty</legend>" +
-      diffs.map(function (d) {
-        return '<label><input type="radio" name="f-diff" value="' + d[0] + '"' +
-          (cfg.difficulty === d[0] ? " checked" : "") + "> " + d[1] + "</label>";
-      }).join("") + "</fieldset>" +
-      '<p class="muted" id="role-preview"></p>' +
-      '<button id="b-start">Start round</button></div>';
-    root.innerHTML = h;
-
-    var count = document.getElementById("f-count");
-    var blank = document.getElementById("f-blank");
-    function preview() {
-      var n = Math.max(4, Math.min(12, parseInt(count.value, 10) || 5));
-      var c = roleCounts(n, blank.checked);
-      document.getElementById("role-preview").textContent =
-        n + " players: " + c.civilians + " civilian(s), " + c.impostors +
-        " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".";
-    }
-    count.oninput = preview; blank.onchange = preview; preview();
-
-    document.getElementById("b-start").onclick = function () {
-      var n = Math.max(4, Math.min(12, parseInt(count.value, 10) || 5));
-      var names = document.getElementById("f-names").value.split(",").map(function (s) { return s.trim(); });
-      var diff = "ALL";
-      var radios = document.getElementsByName("f-diff");
-      for (var i = 0; i < radios.length; i++) if (radios[i].checked) diff = radios[i].value;
-      S.config = {
-        playerCount: n,
-        mode: document.getElementById("f-mode").value,
-        blank: document.getElementById("f-blank").checked,
-        difficulty: diff
-      };
-      // Fresh table when the count changes; otherwise keep session scores.
-      if (S.players.length !== n) {
-        S.players = [];
-        for (var k = 0; k < n; k++) S.players.push({ name: "", role: "civilian", alive: true, score: 0 });
-      }
-      for (var j = 0; j < n; j++) S.players[j].name = names[j] || "";
-      startRound();
-    };
-  }
-
-  // FR3: pass-and-play reveal flow
-  function vReveal() {
-    var i = S.revealIndex;
-    var n = S.players.length;
-    if (i >= n) { S.phase = "clues"; return render(); }
-    var name = playerLabel(i);
-    var h;
-    if (!S.revealOpen) {
-      h = '<div class="card center"><h2>Pass to ' + esc(name) + "</h2>" +
-        "<p>Player " + (i + 1) + " of " + n + ". No peeking, everyone else look away.</p>" +
-        '<button id="b-show">Tap to reveal my word</button></div>';
-      root.innerHTML = h;
-      document.getElementById("b-show").onclick = function () { S.revealOpen = true; render(); };
-    } else {
-      var card = cardFor(S.players[i].role, S.word);
-      var sub = S.players[i].role === "impostor" && S.config.mode === "single"
-        ? "You are the IMPOSTOR. You only get the category."
-        : (S.players[i].role === "blank" ? "You are the BLANK. You know nothing." : "Keep a straight face.");
-      h = '<div class="card center"><h2>' + esc(name) + "</h2>" +
-        '<div class="big-word">' + esc(card) + "</div>" +
-        '<p class="muted">' + esc(sub) + "</p>" +
-        '<button id="b-hide">Tap to hide, pass it on</button></div>';
-      root.innerHTML = h;
-      document.getElementById("b-hide").onclick = function () {
-        S.revealOpen = false;
-        S.revealIndex++;
-        render();
-      };
-    }
-  }
-
-  // FR4: clue phase
-  function vClues() {
-    var last = S.clueRound >= S.maxRounds;
-    var h = '<div class="card"><h2>Clue round ' + S.clueRound + " of " + S.maxRounds + "</h2>" +
-      "<p>Starting player: <strong>" + esc(playerLabel(S.starter)) + "</strong>. Go clockwise.</p>" +
-      '<div class="rules"><p><strong>Rules:</strong> one word per clue. Never say your word (or the category, if you only got one).</p></div>' +
-      '<div class="timer" id="t-left">' + S.timerLeft + 's</div>' +
-      '<button id="b-timer" class="secondary">Start 15s timer</button>' +
-      (last
-        ? '<button id="b-vote">Go to vote</button>'
-        : '<button id="b-next">Next clue round</button>') +
-      '<p class="muted center">Discussion afterwards: about ' + DISCUSS_MIN + "&ndash;" + DISCUSS_MAX + "s.</p></div>";
-    root.innerHTML = h;
-
-    var btn = document.getElementById("b-timer");
-    var el = document.getElementById("t-left");
-    function armStart() {
-      btn.disabled = false;
-      btn.textContent = "Start 15s timer";
-      btn.onclick = onStart;
-    }
-    function onStart() {
-      stopTimer();
-      S.timerLeft = CLUE_SECONDS;
-      if (el) el.textContent = CLUE_SECONDS + "s";
-      btn.textContent = "Reset timer";
-      btn.onclick = onReset;
-      S.timerId = setInterval(function () {
-        S.timerLeft--;
-        if (el) el.textContent = Math.max(0, S.timerLeft) + "s";
-        if (S.timerLeft <= 0) {
-          stopTimer();
-          S.timerLeft = CLUE_SECONDS;
-          armStart();
-        }
-      }, 1000);
-    }
-    function onReset() {
-      stopTimer();
-      S.timerLeft = CLUE_SECONDS;
-      if (el) el.textContent = CLUE_SECONDS + "s";
-      armStart();
-    }
-    armStart();
-
-    if (last) {
-      document.getElementById("b-vote").onclick = function () { S.phase = "vote"; S.revoted = false; render(); };
-    } else {
-      document.getElementById("b-next").onclick = function () { S.clueRound++; S.timerLeft = CLUE_SECONDS; render(); };
-    }
-  }
-
-  function aliveOptions(selected) {
-    return S.players.map(function (p, i) {
-      if (!p.alive) return "";
-      return '<option value="' + i + '"' + (i === selected ? " selected" : "") + ">" +
-        esc(playerLabel(i)) + "</option>";
-    }).join("");
-  }
-
-  // FR5: vote phase (host picks; ties get one revote, then an extra clue round)
-  function vVote() {
-    var h = '<div class="card"><h2>Vote</h2>' +
-      "<p>Discuss, then vote. Host: pick who is eliminated" +
-      (S.revoted ? " (revote after the tie)" : "") + ".</p>" +
-      '<label for="f-elim">Eliminated player</label><select id="f-elim">' +
-      aliveOptions(S.pendingElim >= 0 ? S.pendingElim : 0) + "</select>" +
-      '<button id="b-elim">Reveal their role</button>' +
-      '<button id="b-tie" class="secondary">Vote was tied</button></div>';
-    root.innerHTML = h;
-    document.getElementById("b-elim").onclick = function () {
-      S.pendingElim = parseInt(document.getElementById("f-elim").value, 10);
-      eliminate(S.pendingElim);
-    };
-    document.getElementById("b-tie").onclick = function () {
-      if (!S.revoted) {
-        // One revote.
-        S.revoted = true;
-        render();
-      } else {
-        // Still tied: nobody is eliminated, play another clue round.
-        S.revoted = false;
-        S.maxRounds++;
-        S.phase = "clues";
-        render();
-      }
-    };
-  }
-
-  function eliminate(idx) {
-    S.players[idx].alive = false;
-    S.eliminated.push(idx);
-    var role = S.players[idx].role;
-    if (role === "impostor" || role === "blank") {
-      // Final-guess flow (FR5): host verifies the guess against the civilian word.
-      S.guessFor = idx;
-      S.phase = "guess";
-    } else {
-      var win = checkWin();
-      if (win) return finishRound(win, { guessCorrect: false });
-      // No decision yet: another clue round, then vote again.
-      S.maxRounds++;
-      S.phase = "clues";
-    }
-    render();
-  }
-
-  // Final-guess prompt for an eliminated impostor or blank.
-  function vGuess() {
-    var p = S.players[S.guessFor];
-    var isBlank = p.role === "blank";
-    var h = '<div class="card"><h2>' + esc(playerLabel(S.guessFor)) +
-      " was " + (isBlank ? "the BLANK" : "an IMPOSTOR") + "</h2>" +
-      "<p>Final guess: they may now guess the secret word. " +
-      (isBlank ? "A correct guess wins the game for the Blank." : "A correct guess steals the win for the Impostors.") +
-      ' (Host: the secret word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
-      '<label for="f-first">Who first called out this ' + (isBlank ? "blank" : "impostor") +
-      "? (civilian bonus +1)</label>" +
-      '<select id="f-first"><option value="-1">Nobody / skip</option>' +
-      S.players.map(function (q, i) {
-        if (q.role !== "civilian") return "";
-        return '<option value="' + i + '">' + esc(playerLabel(i)) + "</option>";
-      }).join("") + "</select>" +
-      '<button id="b-right">Guess CORRECT</button>' +
-      '<button id="b-wrong" class="secondary">Guess WRONG</button></div>';
-    root.innerHTML = h;
-    document.getElementById("b-right").onclick = function () {
-      var first = parseInt(document.getElementById("f-first").value, 10);
-      if (isBlank) {
-        finishRound({ winner: "blank", reason: "The Blank guessed the secret word." }, { guessCorrect: true, guessBy: "blank", firstVoter: first });
-      } else {
-        finishRound({ winner: "impostors", reason: "The eliminated impostor guessed the secret word." }, { guessCorrect: true, guessBy: "impostor", firstVoter: first });
-      }
-    };
-    document.getElementById("b-wrong").onclick = function () {
-      var first = parseInt(document.getElementById("f-first").value, 10);
-      var win = checkWin(); // all impostors out -> civilians win; otherwise continue
-      if (win) { finishRound(win, { guessCorrect: false, firstVoter: first }); return; }
-      S.maxRounds++;
-      S.revoted = false;
-      S.phase = "clues";
-      // Remember the bonus nominee for round end (stored on the side).
-      S.pendingBonus = first;
-      render();
-    };
   }
 
   function finishRound(outcome, opts) {
@@ -468,30 +231,382 @@
     render();
   }
 
-  function scoreTable() {
-    var rows = S.players.map(function (p, i) {
-      var roleTag = p.alive ? "" : " (out)";
-      return "<tr><td>" + esc(playerLabel(i)) + esc(roleTag) + "</td><td>" + p.score + "</td></tr>";
-    }).join("");
-    return '<table><tr><th>Player</th><th>Points</th></tr>' + rows + "</table>";
+  // ---------- screens ----------
+  function render() {
+    stopTimer();
+    if (S.phase === "setup") return vSetup();
+    if (S.phase === "card") return vCard();
+    if (S.phase === "play") return vPlay();
+    if (S.phase === "vote") return vVote();
+    if (S.phase === "result") return vResult();
+    if (S.phase === "final") return vFinal();
   }
 
-  // FR8: round end
+  // Screen 1: setup with stepper, name pills, collapsed options.
+  function vSetup() {
+    var cfg = S.config;
+    while (S.setupNames.length < 12) S.setupNames.push("");
+    var namesHtml = "";
+    for (var i = 0; i < cfg.playerCount; i++) {
+      namesHtml += '<input id="name-' + i + '" maxlength="24" value="' + esc(S.setupNames[i]) +
+        '" placeholder="Player ' + (i + 1) + '" aria-label="Name of player ' + (i + 1) + '">';
+    }
+    function sel(id, val, opts) {
+      return '<label for="' + id + '">' + id.replace("opt-", "") + "</label>" +
+        '<select id="' + id + '">' + opts.map(function (o) {
+          return '<option value="' + o[0] + '"' + (val === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
+        }).join("") + "</select>";
+    }
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+      '<h2 class="screen-title">Players</h2>' +
+      '<div class="stepper">' +
+      '<button id="count-minus" aria-label="Fewer players">−</button>' +
+      '<output id="count-val" aria-live="polite">' + cfg.playerCount + "</output>" +
+      '<button id="count-plus" aria-label="More players">+</button></div>' +
+      '<div class="names">' + namesHtml + "</div>" +
+      '<details class="options"><summary>Options</summary><div class="opt-body">' +
+      sel("opt-mode", cfg.mode, [["pair", "Mode: Word Pair"], ["single", "Mode: Single Word"]]) +
+      sel("opt-diff", cfg.difficulty, [["ALL", "Difficulty: All"], ["E", "Difficulty: Easy"], ["M", "Difficulty: Medium"], ["H", "Difficulty: Hard"]]) +
+      '<label class="check-row"><input type="checkbox" id="opt-blank"' + (cfg.blank ? " checked" : "") + "> Blank role (6+ players)</label>" +
+      '<label class="check-row"><input type="checkbox" id="opt-timer"' + (cfg.timer ? " checked" : "") + "> 15s clue timer</label>" +
+      "</div></details>" +
+      '<p class="muted" id="role-preview"></p>' +
+      "</div></div>" +
+      '<button class="btn" id="b-start">' + SKIP_ICON + "Start game</button>";
+
+    function readNames() {
+      for (var k = 0; k < cfg.playerCount; k++) {
+        var el = document.getElementById("name-" + k);
+        if (el) S.setupNames[k] = el.value.trim();
+      }
+    }
+    function preview() {
+      var c = roleCounts(cfg.playerCount, cfg.blank);
+      document.getElementById("role-preview").textContent =
+        cfg.playerCount + " players: " + c.civilians + " civilian(s), " + c.impostors +
+        " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".";
+    }
+    preview();
+
+    document.getElementById("count-minus").onclick = function () {
+      readNames();
+      cfg.playerCount = Math.max(4, cfg.playerCount - 1);
+      render();
+    };
+    document.getElementById("count-plus").onclick = function () {
+      readNames();
+      cfg.playerCount = Math.min(12, cfg.playerCount + 1);
+      render();
+    };
+    document.getElementById("b-start").onclick = function () {
+      readNames();
+      cfg.mode = document.getElementById("opt-mode").value;
+      cfg.difficulty = document.getElementById("opt-diff").value;
+      cfg.blank = document.getElementById("opt-blank").checked;
+      cfg.timer = document.getElementById("opt-timer").checked;
+      if (S.players.length !== cfg.playerCount) {
+        S.players = [];
+        for (var k = 0; k < cfg.playerCount; k++) S.players.push({ name: "", role: "civilian", alive: true, score: 0 });
+      }
+      startRound();
+    };
+  }
+
+  // Screen 2: swipe-up card, one per player. No pass screen: next card starts covered.
+  function vCard() {
+    var i = S.cardIndex;
+    var n = S.players.length;
+    if (i >= n) { S.phase = "play"; return render(); }
+    var name = playerLabel(i);
+    var color = S.colors[i];
+    var pill = pillFor(S.players[i].role, S.word);
+    var pillHtml = '<div class="pill' + (pill.cls ? " " + pill.cls : "") + '">' + esc(pill.text) + "</div>";
+    if (pill.sub) pillHtml += '<p class="sub">Category: ' + esc(pill.sub) + "</p>";
+    var last = (i === n - 1);
+
+    root.innerHTML =
+      '<div class="stage settle" id="stage" style="--card:' + color + '">' +
+      '<div class="face" id="face" aria-hidden="true"><h2 class="name">' + esc(name) + "</h2>" + pillHtml + "</div>" +
+      '<div class="sheet" id="sheet" tabindex="0" role="button" ' +
+      'aria-label="' + esc(name) + ': swipe up or hold Space to peek at your word. Release to hide.">' +
+      '<h2 class="name">' + esc(name) + "</h2>" +
+      '<div class="hint"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M6 15l6-6 6 6"/></svg>Swipe up</div></div></div>' +
+      '<button class="btn" id="next" disabled>Swipe up first</button>';
+
+    var stage = document.getElementById("stage");
+    var sheet = document.getElementById("sheet");
+    var face = document.getElementById("face");
+    var next = document.getElementById("next");
+    var startY = null, h = 0, seen = false;
+
+    function setP(raw) {
+      var v = Math.max(0, raw);
+      if (v > 0.75) v = 0.75 + (v - 0.75) * 0.3; // resistance near the top
+      v = Math.min(v, 0.9);                       // capped at 90%
+      stage.style.setProperty("--p", v);
+      face.setAttribute("aria-hidden", v < 0.5 ? "true" : "false");
+      if (!seen && v >= 0.5) {
+        seen = true;
+        buzz(12);
+        next.disabled = false;
+        next.innerHTML = SKIP_ICON + (last ? "Start game" : "Next player");
+      }
+    }
+    function release() {
+      // The word ALWAYS hides on release.
+      stage.classList.add("settle");
+      stage.style.setProperty("--p", 0);
+      face.setAttribute("aria-hidden", "true");
+    }
+    sheet.addEventListener("pointerdown", function (e) {
+      startY = e.clientY; h = stage.clientHeight || 400;
+      stage.classList.remove("settle"); stage.classList.add("used");
+      try { sheet.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    sheet.addEventListener("pointermove", function (e) {
+      if (startY !== null) setP((startY - e.clientY) / h);
+    });
+    function end() { if (startY !== null) { startY = null; release(); } }
+    sheet.addEventListener("pointerup", end);
+    sheet.addEventListener("pointercancel", end);
+    // Keyboard alternative: hold Space or Arrow Up to reveal, release to hide.
+    sheet.addEventListener("keydown", function (e) {
+      if ((e.key === " " || e.key === "ArrowUp") && !e.repeat) {
+        e.preventDefault();
+        stage.classList.remove("settle"); stage.classList.add("used");
+        setP(0.9);
+      }
+    });
+    sheet.addEventListener("keyup", function (e) {
+      if (e.key === " " || e.key === "ArrowUp") release();
+    });
+    // Rotation or app switch mid-reveal: reset to hidden.
+    function hideOnly() {
+      stage.classList.add("settle");
+      stage.style.setProperty("--p", 0);
+      face.setAttribute("aria-hidden", "true");
+      startY = null;
+    }
+    window.addEventListener("resize", hideOnly);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) hideOnly();
+    });
+
+    next.onclick = function () {
+      window.removeEventListener("resize", hideOnly);
+      S.cardIndex++;
+      render();
+    };
+  }
+
+  // Screen 3: play. Mint card, starter, round counter, rules, optional timer.
+  function vPlay() {
+    var last = S.clueRound >= S.maxRounds;
+    var timerHtml = "";
+    if (S.config.timer) {
+      timerHtml = '<div class="timer" id="t-left">' + S.timerLeft + 's</div>' +
+        '<button class="btn" id="b-timer">' + SKIP_ICON + "Start 15s timer</button>";
+    }
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#A9F2B8"><div class="face centered">' +
+      '<h2 class="screen-title">' + esc(playerLabel(S.starter)) + " starts</h2>" +
+      "<p>One word each. Then vote.</p>" +
+      '<p class="muted">Clue round ' + S.clueRound + " of " + S.maxRounds +
+      ". Discussion afterwards: about 60&ndash;90s.</p>" +
+      timerHtml +
+      (last ? "" : '<button class="btn" id="b-next-round">' + SKIP_ICON + "Next clue round</button>") +
+      "</div></div>" +
+      '<button class="btn" id="b-vote">' + SKIP_ICON + "Vote</button>";
+
+    if (S.config.timer) wireTimer();
+    var nx = document.getElementById("b-next-round");
+    if (nx) nx.onclick = function () { S.clueRound++; S.timerLeft = CLUE_SECONDS; render(); };
+    document.getElementById("b-vote").onclick = function () {
+      S.selected = -1;
+      S.phase = "vote";
+      render();
+    };
+  }
+
+  function wireTimer() {
+    var btn = document.getElementById("b-timer");
+    var el = document.getElementById("t-left");
+    function armStart() {
+      btn.innerHTML = SKIP_ICON + "Start 15s timer";
+      btn.onclick = onStart;
+    }
+    function onStart() {
+      stopTimer();
+      S.timerLeft = CLUE_SECONDS;
+      if (el) el.textContent = CLUE_SECONDS + "s";
+      btn.innerHTML = SKIP_ICON + "Reset timer";
+      btn.onclick = onReset;
+      S.timerId = setInterval(function () {
+        S.timerLeft--;
+        if (el) el.textContent = Math.max(0, S.timerLeft) + "s";
+        if (S.timerLeft <= 0) { stopTimer(); S.timerLeft = CLUE_SECONDS; armStart(); }
+      }, 1000);
+    }
+    function onReset() {
+      stopTimer();
+      S.timerLeft = CLUE_SECONDS;
+      if (el) el.textContent = CLUE_SECONDS + "s";
+      armStart();
+    }
+    armStart();
+  }
+
+  // Screen 4: vote with name pills. Selected pill fills with its card color.
+  function vVote() {
+    var pills = "";
+    S.players.forEach(function (p, i) {
+      if (!p.alive) return;
+      pills += '<button class="vote-pill" id="vote-pick-' + i + '" aria-pressed="' +
+        (S.selected === i ? "true" : "false") + '" style="--pick:' + S.colors[i] + '">' +
+        esc(playerLabel(i)) + "</button>";
+    });
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+      '<h2 class="screen-title">Who is it?</h2>' +
+      '<p class="muted">Tap a name, then confirm.</p>' +
+      '<div class="vote-grid">' + pills + "</div>" +
+      (S.revoted ? '<p class="muted">Revote after the tie.</p>' : "") +
+      "</div></div>" +
+      '<button class="btn" id="b-confirm"' + (S.selected < 0 ? " disabled" : "") + ">" + SKIP_ICON + "Confirm</button>" +
+      '<button class="btn" id="b-tie">' + SKIP_ICON + "Vote tied</button>";
+
+    S.players.forEach(function (p, i) {
+      if (!p.alive) return;
+      document.getElementById("vote-pick-" + i).onclick = function () {
+        S.selected = i;
+        render();
+      };
+    });
+    document.getElementById("b-confirm").onclick = function () {
+      if (S.selected >= 0) eliminate(S.selected);
+    };
+    document.getElementById("b-tie").onclick = function () {
+      if (!S.revoted) {
+        S.revoted = true; // one revote
+        render();
+      } else {
+        // Still tied: nobody eliminated, another clue round.
+        S.revoted = false;
+        S.maxRounds++;
+        S.phase = "play";
+        render();
+      }
+    };
+  }
+
+  function eliminate(idx) {
+    S.players[idx].alive = false;
+    var role = S.players[idx].role;
+    if (role === "impostor" || role === "blank") {
+      S.guessFor = idx;
+      vGuess(); // final-guess step
+      return;
+    }
+    vElimReveal(idx, role);
+  }
+
+  // Elimination reveal for a civilian (or blank already handled): show role, continue.
+  function vElimReveal(idx, role) {
+    var line = role === "blank" ? "was the blank" : "was a civilian";
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
+      '<h2 class="screen-title">' + esc(playerLabel(idx)) + " " + line + "</h2>" +
+      "<p>No final guess. The game goes on.</p>" +
+      "</div></div>" +
+      '<button class="btn" id="b-continue">' + SKIP_ICON + "Continue</button>";
+    document.getElementById("b-continue").onclick = function () {
+      var win = checkWin();
+      if (win) { finishRound(win, { guessCorrect: false }); return; }
+      S.maxRounds++;
+      S.revoted = false;
+      S.phase = "play";
+      render();
+    };
+  }
+
+  // Final-guess step for an eliminated impostor or blank.
+  function vGuess() {
+    var idx = S.guessFor;
+    var p = S.players[idx];
+    var isBlank = p.role === "blank";
+    var line = isBlank ? "was the blank" : "was the impostor";
+    var firstOpts = '<option value="-1">Nobody / skip</option>' + S.players.map(function (q, i) {
+      if (q.role !== "civilian") return "";
+      return '<option value="' + i + '">' + esc(playerLabel(i)) + "</option>";
+    }).join("");
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
+      '<h2 class="screen-title">' + esc(playerLabel(idx)) + " " + line + "</h2>" +
+      "<p>Final guess: name the secret word now. " +
+      (isBlank ? "A correct guess wins the game for the blank."
+               : "A correct guess steals the win for the impostors.") +
+      ' (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
+      '<label for="f-first">Who called them out first? (civilian +1)</label>' +
+      '<select id="f-first">' + firstOpts + "</select>" +
+      "</div></div>" +
+      '<button class="btn" id="b-right">' + SKIP_ICON + "Guess correct</button>" +
+      '<button class="btn" id="b-wrong">' + SKIP_ICON + "Guess wrong</button>";
+    document.getElementById("b-right").onclick = function () {
+      var first = parseInt(document.getElementById("f-first").value, 10);
+      if (isBlank) {
+        finishRound({ winner: "blank", reason: "The blank guessed the secret word." },
+          { guessCorrect: true, guessBy: "blank", firstVoter: first });
+      } else {
+        finishRound({ winner: "impostors", reason: "The eliminated impostor guessed the secret word." },
+          { guessCorrect: true, guessBy: "impostor", firstVoter: first });
+      }
+    };
+    document.getElementById("b-wrong").onclick = function () {
+      var first = parseInt(document.getElementById("f-first").value, 10);
+      var win = checkWin();
+      if (win) { finishRound(win, { guessCorrect: false, firstVoter: first }); return; }
+      S.maxRounds++;
+      S.revoted = false;
+      S.pendingBonus = first;
+      S.phase = "play";
+      render();
+    };
+  }
+
+  function scoreTable() {
+    var rows = S.players.map(function (p, i) {
+      var tag = p.alive ? "" : " (out)";
+      return "<tr><td>" + esc(playerLabel(i)) + esc(tag) + "</td><td>" + p.score + "</td></tr>";
+    }).join("");
+    return "<table><tr><th>Player</th><th>Points</th></tr>" + rows + "</table>";
+  }
+
+  // Screen 5: result. Cyan for civilians, pink for impostors (safe: roles are public now).
   function vResult() {
     var r = S.result;
     var title = r.winner === "civilians" ? "Civilians win!"
-      : r.winner === "impostors" ? "Impostors win!"
-      : "Blank wins!";
+      : r.winner === "impostors" ? "Impostors win!" : "Blank wins!";
+    var card = r.winner === "civilians" ? "#88F5F5" : r.winner === "impostors" ? "#F4B3D4" : "#F6EE8A";
+    var whoIdx = S.guessFor >= 0 ? S.guessFor : -1;
+    var whoLine = whoIdx >= 0
+      ? esc(playerLabel(whoIdx)) + (S.players[whoIdx].role === "blank" ? " was the blank" : " was the impostor")
+      : esc(r.reason);
     var wordsLine = S.config.mode === "pair"
-      ? 'Civilians: "' + S.word.civilian + '" / Impostor: "' + S.word.impostor + '" (' + S.word.theme + ")."
-      : 'Word: "' + S.word.civilian + '" (' + S.word.theme + ").";
-    var h = '<div class="card"><h2>' + title + "</h2>" +
-      "<p>" + esc(r.reason) + "</p>" +
+      ? "Civilians: \u201C" + S.word.civilian + "\u201D / Impostor: \u201C" + S.word.impostor +
+        "\u201D (" + S.word.theme + ")."
+      : "Word: \u201C" + S.word.civilian + "\u201D (" + S.word.theme + ").";
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:' + card + '"><div class="face centered">' +
+      '<h2 class="screen-title">' + title + "</h2>" +
+      "<p><strong>" + whoLine + "</strong></p>" +
       "<p>" + esc(wordsLine) + "</p>" +
       scoreTable() +
-      '<button id="b-next-round">Next round</button>' +
-      '<button id="b-end" class="secondary">End game</button></div>';
-    root.innerHTML = h;
+      "</div></div>" +
+      '<button class="btn" id="b-next-round">' + SKIP_ICON + "Next round</button>" +
+      '<button class="btn" id="b-end">' + SKIP_ICON + "End game</button>";
     document.getElementById("b-next-round").onclick = function () { startRound(); };
     document.getElementById("b-end").onclick = function () { S.phase = "final"; render(); };
   }
@@ -503,10 +618,13 @@
     var rows = order.map(function (i) {
       return "<tr><td>" + esc(playerLabel(i)) + "</td><td>" + S.players[i].score + "</td></tr>";
     }).join("");
-    root.innerHTML = '<div class="card"><h2>Final scores</h2>' +
-      '<table><tr><th>Player</th><th>Points</th></tr>' + rows + "</table>" +
-      '<button id="b-again">Play again</button>' +
-      '<button id="b-setup" class="secondary">Change setup</button></div>';
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
+      '<h2 class="screen-title">Final scores</h2>' +
+      "<table><tr><th>Player</th><th>Points</th></tr>" + rows + "</table>" +
+      "</div></div>" +
+      '<button class="btn" id="b-again">' + SKIP_ICON + "Play again</button>" +
+      '<button class="btn" id="b-setup">' + SKIP_ICON + "Change setup</button>";
     document.getElementById("b-again").onclick = function () {
       S.players.forEach(function (p) { p.score = 0; });
       startRound();
@@ -530,6 +648,7 @@
   }
 
   // ---------- boot: the only network call ----------
+  document.getElementById("quit").onclick = quitToSetup;
   loadUsed();
   fetch("data/words.json")
     .then(function (res) {
@@ -541,8 +660,9 @@
       render();
     })
     .catch(function () {
-      root.innerHTML = '<div class="card"><h2>Could not load words</h2>' +
+      root.innerHTML = '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+        "<h2>Could not load words</h2>" +
         "<p>Serve the <code>dist/</code> folder over HTTP (for example " +
-        "<code>npx serve dist</code>) or deploy with Firebase Hosting, then reload.</p></div>";
+        "<code>npx serve dist</code>) or deploy with Firebase Hosting, then reload.</p></div></div>";
     });
 })();
