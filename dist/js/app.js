@@ -369,9 +369,12 @@
   }
 
   function vSetupOptions(cfg) {
-    function segBtn(id, group, val, title, sub) {
+    if (cfg.playerCount < 6) cfg.blank = false; // blank needs 6+ players: hide it
+    var DIFF_ORDER = ["ALL", "E", "M", "H"];
+    var DIFF_LABEL = { ALL: "All", E: "Easy", M: "Medium", H: "Hard" };
+    function segBtn(id, group, val, title) {
       return '<button id="' + id + '" aria-pressed="' + (group === val ? "true" : "false") + '">' +
-        "<b>" + esc(title) + "</b>" + (sub ? "<span>" + esc(sub) + "</span>" : "") + "</button>";
+        "<b>" + esc(title) + "</b></button>";
     }
     function switchBtn(id, on, label) {
       return '<button class="switch" id="' + id + '" role="switch" aria-checked="' +
@@ -383,19 +386,13 @@
       '<div class="stage stage-pad" style="--card:#F6EE8A"><div class="face">' +
       '<p class="step-tag">Step 3 of 3 · Options</p>' +
       '<h2 class="screen-title">Game options</h2>' +
-      '<p class="opt-label">Mode</p>' +
       '<div class="seg mode" role="group" aria-label="Game mode">' +
-      segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair", "Everyone gets a word") +
-      segBtn("opt-mode-single", cfg.mode, "single", "Single Word", "Impostor gets a hint") +
+      segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
+      segBtn("opt-mode-single", cfg.mode, "single", "Single Word") +
       "</div>" +
-      '<p class="opt-label">Difficulty</p>' +
-      '<div class="seg diff" role="group" aria-label="Difficulty">' +
-      segBtn("opt-diff-ALL", cfg.difficulty, "ALL", "All") +
-      segBtn("opt-diff-E", cfg.difficulty, "E", "Easy") +
-      segBtn("opt-diff-M", cfg.difficulty, "M", "Med") +
-      segBtn("opt-diff-H", cfg.difficulty, "H", "Hard") +
-      "</div>" +
-      switchBtn("opt-blank", cfg.blank, "Blank role (6+ players)") +
+      '<button class="switch" id="opt-diff-cycle"><span>Difficulty</span>' +
+      '<span class="badge">' + DIFF_LABEL[cfg.difficulty] + "</span></button>" +
+      (cfg.playerCount >= 6 ? switchBtn("opt-blank", cfg.blank, "Blank role") : "") +
       '<p class="muted" id="role-preview">' + cfg.playerCount + " players: " + c.civilians +
       " civilian(s), " + c.impostors + " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".</p>" +
       "</div></div>" +
@@ -405,18 +402,18 @@
     function pickMode(v) { return function () { cfg.mode = v; render(); }; }
     document.getElementById("opt-mode-pair").onclick = pickMode("pair");
     document.getElementById("opt-mode-single").onclick = pickMode("single");
-    function pickDiff(v) { return function () { cfg.difficulty = v; render(); }; }
-    document.getElementById("opt-diff-ALL").onclick = pickDiff("ALL");
-    document.getElementById("opt-diff-E").onclick = pickDiff("E");
-    document.getElementById("opt-diff-M").onclick = pickDiff("M");
-    document.getElementById("opt-diff-H").onclick = pickDiff("H");
+    document.getElementById("opt-diff-cycle").onclick = function () {
+      cfg.difficulty = DIFF_ORDER[(DIFF_ORDER.indexOf(cfg.difficulty) + 1) % DIFF_ORDER.length];
+      render();
+    };
     function flip(key) {
       return function () {
         cfg[key] = !cfg[key];
         render();
       };
     }
-    document.getElementById("opt-blank").onclick = flip("blank");
+    var blankBtn = document.getElementById("opt-blank");
+    if (blankBtn) blankBtn.onclick = flip("blank");
     document.getElementById("b-back-review").onclick = function () {
       S.setupStep = 2;
       render();

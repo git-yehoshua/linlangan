@@ -138,29 +138,16 @@ input.nick {
 /* Secondary (back) button */
 .btn.secondary { background: transparent; color: var(--color-ink); }
 .opt-body { display: flex; flex-direction: column; gap: 1rem; margin: 0.5rem 0; }
-.opt-label {
-  font-family: var(--font-display); text-transform: uppercase;
-  letter-spacing: 0.06em; font-size: var(--text-button); margin: 0.25rem 0 0; text-align: center;
-}
-/* Mode: two roomy cards with a one-line explanation each */
+/* Mode: two compact cards */
 .seg { display: flex; gap: 0.6rem; }
 .seg.mode button {
-  flex: 1; min-height: 4.5rem; border-radius: var(--radius-pill);
+  flex: 1; min-height: 3.5rem; border-radius: var(--radius-pill);
   border: 2px solid var(--color-ink); background: var(--color-white); color: var(--color-ink);
   cursor: pointer; padding: 0.6rem 0.5rem;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem;
+  font-family: var(--font-display); font-size: var(--text-button);
+  letter-spacing: 0.03em; text-transform: uppercase;
 }
-.seg.mode button b { font-family: var(--font-display); font-weight: 400; font-size: var(--text-button); letter-spacing: 0.03em; text-transform: uppercase; }
-.seg.mode button span { font-size: var(--text-sm); opacity: 0.75; }
 .seg.mode button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-white); }
-/* Difficulty: four even chips */
-.seg.diff button {
-  flex: 1; min-height: 3.25rem; border-radius: 999px;
-  border: 2px solid var(--color-ink); background: var(--color-white); color: var(--color-ink);
-  font-family: var(--font-body); font-weight: 700; font-size: var(--text-body);
-  cursor: pointer; padding: 0.5rem 0.25rem;
-}
-.seg.diff button[aria-pressed="true"] { background: var(--color-ink); color: var(--color-white); }
 /* Blank role: full-width tappable row with an ON/OFF badge */
 .switch {
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
