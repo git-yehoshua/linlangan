@@ -364,13 +364,14 @@
   }
 
   function vSetupOptions(cfg) {
-    function segBtn(id, group, val, label) {
+    function segBtn(id, group, val, title, sub) {
       return '<button id="' + id + '" aria-pressed="' + (group === val ? "true" : "false") + '">' +
-        esc(label) + "</button>";
+        "<b>" + esc(title) + "</b>" + (sub ? "<span>" + esc(sub) + "</span>" : "") + "</button>";
     }
     function switchBtn(id, on, label) {
       return '<button class="switch" id="' + id + '" role="switch" aria-checked="' +
-        (on ? "true" : "false") + '"><span class="track" aria-hidden="true"></span>' + esc(label) + "</button>";
+        (on ? "true" : "false") + '"><span>' + esc(label) + '</span><span class="badge">' +
+        (on ? "On" : "Off") + "</span></button>";
     }
     var c = roleCounts(cfg.playerCount, cfg.blank);
     root.innerHTML =
@@ -378,12 +379,12 @@
       '<p class="step-tag">Step 3 of 3 · Options</p>' +
       '<h2 class="screen-title">Game options</h2>' +
       '<p class="opt-label">Mode</p>' +
-      '<div class="seg" role="group" aria-label="Game mode">' +
-      segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
-      segBtn("opt-mode-single", cfg.mode, "single", "Single Word") +
+      '<div class="seg mode" role="group" aria-label="Game mode">' +
+      segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair", "Everyone gets a word") +
+      segBtn("opt-mode-single", cfg.mode, "single", "Single Word", "Impostor gets a hint") +
       "</div>" +
       '<p class="opt-label">Difficulty</p>' +
-      '<div class="seg" role="group" aria-label="Difficulty">' +
+      '<div class="seg diff" role="group" aria-label="Difficulty">' +
       segBtn("opt-diff-ALL", cfg.difficulty, "ALL", "All") +
       segBtn("opt-diff-E", cfg.difficulty, "E", "Easy") +
       segBtn("opt-diff-M", cfg.difficulty, "M", "Med") +
@@ -396,12 +397,6 @@
       '<button class="btn" id="b-start">' + SKIP_ICON + "Start game</button>" +
       '<button class="btn secondary" id="b-back-review">‹ Back</button>';
 
-    function preview() {
-      var cc = roleCounts(cfg.playerCount, cfg.blank);
-      document.getElementById("role-preview").textContent =
-        cfg.playerCount + " players: " + cc.civilians + " civilian(s), " + cc.impostors +
-        " impostor(s)" + (cc.blank ? ", 1 blank" : "") + ".";
-    }
     function pickMode(v) { return function () { cfg.mode = v; render(); }; }
     document.getElementById("opt-mode-pair").onclick = pickMode("pair");
     document.getElementById("opt-mode-single").onclick = pickMode("single");
@@ -410,15 +405,13 @@
     document.getElementById("opt-diff-E").onclick = pickDiff("E");
     document.getElementById("opt-diff-M").onclick = pickDiff("M");
     document.getElementById("opt-diff-H").onclick = pickDiff("H");
-    function flip(key, id) {
+    function flip(key) {
       return function () {
         cfg[key] = !cfg[key];
-        var b = document.getElementById(id);
-        if (b) b.setAttribute("aria-checked", cfg[key] ? "true" : "false");
-        preview();
+        render();
       };
     }
-    document.getElementById("opt-blank").onclick = flip("blank", "opt-blank");
+    document.getElementById("opt-blank").onclick = flip("blank");
     document.getElementById("b-back-review").onclick = function () {
       S.setupStep = 2;
       render();
