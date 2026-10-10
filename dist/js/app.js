@@ -285,10 +285,12 @@
       ' placeholder="Type a nickname" autocomplete="off" aria-describedby="req-hint">' +
       '<p class="req-hint" id="req-hint" role="alert">Nickname required to continue.</p>' +
       "</div></div>" +
-      '<div class="mini-nav' + (S.setupEdit === 0 ? " single" : "") + '" id="setup-nav">' +
-      (S.setupEdit === 0 ? "" : '<button class="btn-mini" id="ed-prev">Prev</button>') +
-      '<button class="btn-mini" id="ed-next">Next</button>' +
-      "</div>";
+      (S.setupEdit === 0
+        ? '<button class="btn" id="ed-next">' + SKIP_ICON + "Next</button>"
+        : '<div class="mini-nav" id="setup-nav">' +
+          '<button class="btn-mini" id="ed-prev">Prev</button>' +
+          '<button class="btn-mini" id="ed-next">Next</button>' +
+          "</div>");
 
     wireStepper(cfg);
     var input = document.getElementById("pname");
