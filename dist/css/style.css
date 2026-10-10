@@ -23,7 +23,7 @@ header { position: relative; padding-top: 0.5rem; }
 /* Big card */
 .stage {
   --p: 0;
-  position: relative; flex: 1; min-height: 50vh;
+  position: relative; flex: 1; min-height: 58dvh;
   overflow: hidden; border-radius: var(--radius-card);
   background: var(--card, var(--color-white));
   user-select: none; -webkit-user-select: none;
@@ -105,14 +105,15 @@ header { position: relative; padding-top: 0.5rem; }
   color: var(--color-ink); font-size: 1.25rem; font-family: var(--font-body); font-weight: 600;
   padding: 0.5rem 1rem; width: 100%; text-align: center;
 }
-/* Preview strip: one chip per player, tap to jump */
+.req-hint { font-size: var(--text-sm); color: var(--color-muted); margin: 0; text-align: center; }
+/* Preview roster: read-only chips, one per added player */
 .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin: 0.5rem 0; }
 .chip {
-  min-height: 2.75rem; min-width: 3rem; padding: 0.25rem 0.75rem;
+  display: inline-block; min-height: 2.75rem; min-width: 3rem; padding: 0.25rem 0.75rem;
   border-radius: 999px; border: 2px solid var(--color-ink);
   background: var(--color-white); color: var(--color-ink);
   font-family: var(--font-body); font-weight: 600; font-size: var(--text-sm);
-  cursor: pointer;
+  line-height: 2.1rem; text-align: center;
 }
 .chip.filled { background: var(--color-ink); color: var(--color-white); }
 .chip.current { outline: 3px solid var(--color-ink); outline-offset: 2px; }

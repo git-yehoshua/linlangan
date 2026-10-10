@@ -289,64 +289,63 @@
   }
 
   function chipsHtml(cfg) {
+    // Read-only roster preview: every added player, no navigation.
     var out = "";
     for (var i = 0; i < cfg.playerCount; i++) {
       var label = S.setupNames[i] || ("P" + (i + 1));
-      out += '<button class="chip' + (S.setupNames[i] ? " filled" : "") +
-        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '" ' +
-        'aria-label="Edit player ' + (i + 1) + '">' + esc(label) + "</button>";
+      out += '<span class="chip' + (S.setupNames[i] ? " filled" : "") +
+        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '">' + esc(label) + "</span>";
     }
-    return '<div class="chips" role="group" aria-label="Players preview">' + out + "</div>";
-  }
-
-  function wireChips(cfg) {
-    for (var i = 0; i < cfg.playerCount; i++) {
-      (function (idx) {
-        document.getElementById("chip-" + idx).onclick = function () {
-          saveEditor(cfg);
-          S.setupEdit = idx;
-          render();
-        };
-      })(i);
-    }
+    return '<div class="chips" role="group" aria-label="Added players">' + out + "</div>";
   }
 
   function vSetupPlayers(cfg) {
     var last = S.setupEdit >= cfg.playerCount - 1;
+    var filled = S.setupNames[S.setupEdit].trim() !== "";
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
       '<p class="step-tag">Step 1 of 2 · Players</p>' +
       '<h2 class="screen-title">Who is playing?</h2>' +
       stepperHtml(cfg) +
       '<div class="editor">' +
-      '<button id="ed-prev" aria-label="Previous player"' + (S.setupEdit === 0 ? " disabled" : "") + ">‹</button>" +
+      '<button id="ed-back" aria-label="Back to previous player"' + (S.setupEdit === 0 ? " disabled" : "") + ">‹</button>" +
       '<div class="editor-main">' +
       '<label for="pname">Player ' + (S.setupEdit + 1) + " of " + cfg.playerCount + "</label>" +
       '<input id="pname" maxlength="24" value="' + esc(S.setupNames[S.setupEdit]) + '"' +
-      ' placeholder="Player ' + (S.setupEdit + 1) + '">' +
+      ' placeholder="Type a nickname" autocomplete="off">' +
       "</div>" +
-      '<button id="ed-next" aria-label="Next player"' + (last ? " disabled" : "") + ">›</button>" +
       "</div>" +
+      '<p class="req-hint" id="req-hint">Nickname required to continue.</p>' +
       chipsHtml(cfg) +
       "</div></div>" +
-      '<button class="btn" id="b-to-options">' + SKIP_ICON + "Continue</button>";
+      '<button class="btn" id="b-next-player"' + (filled ? "" : " disabled") + ">" +
+      SKIP_ICON + (last ? "Continue" : "Next") + "</button>";
 
     wireStepper(cfg);
-    wireChips(cfg);
-    document.getElementById("ed-prev").onclick = function () {
+    var input = document.getElementById("pname");
+    var nextBtn = document.getElementById("b-next-player");
+    input.oninput = function () {
+      nextBtn.disabled = input.value.trim() === "";
+    };
+    document.getElementById("ed-back").onclick = function () {
       saveEditor(cfg);
       S.setupEdit = Math.max(0, S.setupEdit - 1);
       render();
     };
-    document.getElementById("ed-next").onclick = function () {
+    nextBtn.onclick = function () {
       saveEditor(cfg);
-      S.setupEdit = Math.min(cfg.playerCount - 1, S.setupEdit + 1);
-      render();
-    };
-    document.getElementById("b-to-options").onclick = function () {
-      saveEditor(cfg);
-      S.setupStep = 2;
-      render();
+      if (S.setupNames[S.setupEdit].trim() === "") return; // nicknames are required
+      if (last) {
+        // Safety net: never leave an unnamed player behind.
+        for (var k = 0; k < cfg.playerCount; k++) {
+          if (!S.setupNames[k].trim()) { S.setupEdit = k; render(); return; }
+        }
+        S.setupStep = 2;
+        render();
+      } else {
+        S.setupEdit = Math.min(cfg.playerCount - 1, S.setupEdit + 1);
+        render();
+      }
     };
   }
 
@@ -410,6 +409,7 @@
     document.getElementById("opt-timer").onclick = flip("timer", "opt-timer");
     document.getElementById("b-back-players").onclick = function () {
       S.setupStep = 1;
+      S.setupEdit = 0;
       render();
     };
     document.getElementById("b-start").onclick = function () {
