@@ -294,12 +294,31 @@
     wireStepper(cfg);
     var input = document.getElementById("pname");
     var nextMini = document.getElementById("ed-next");
-    input.oninput = function () {
-      nextMini.disabled = input.value.trim() === "";
-    };
+    var hint = document.getElementById("req-hint");
+    function norm(s) { return String(s).trim().toLowerCase().replace(/\s+/g, " "); }
+    // A nickname is taken when another player already uses it (case-insensitive).
+    function isDup() {
+      var v = norm(input.value);
+      if (!v) return false;
+      for (var k = 0; k < cfg.playerCount; k++) {
+        if (k !== S.setupEdit && norm(S.setupNames[k]) === v) return true;
+      }
+      return false;
+    }
+    function gate() {
+      var v = input.value.trim();
+      var dup = isDup();
+      nextMini.disabled = (v === "" || dup);
+      if (hint) hint.textContent = dup ? "That nickname is already taken." : "Nickname required to continue.";
+    }
+    input.oninput = gate;
     function advance() {
       saveEditor(cfg);
-      if (S.setupNames[S.setupEdit].trim() === "") return; // nicknames are required
+      var v = S.setupNames[S.setupEdit].trim();
+      if (v === "") return; // nicknames are required
+      for (var d = 0; d < cfg.playerCount; d++) {
+        if (d !== S.setupEdit && norm(S.setupNames[d]) === norm(v)) return; // no duplicates
+      }
       if (S.setupEdit >= cfg.playerCount - 1) {
         // Safety net: never leave an unnamed player behind.
         for (var k = 0; k < cfg.playerCount; k++) {
