@@ -84,32 +84,41 @@ header { position: relative; padding-top: 0.5rem; }
   font-size: 1.5rem; font-weight: 700; cursor: pointer; padding: 0;
 }
 .stepper output { font-family: var(--font-display); font-size: 2rem; min-width: 3rem; text-align: center; }
-.names {
-  display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0;
-  max-height: 18rem; overflow-y: auto; padding-right: 0.25rem;
+.step-tag {
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: var(--text-sm); color: var(--color-muted); margin: 0;
 }
-.names input {
+/* Paged name editor: prev / input / next */
+.editor { display: flex; align-items: stretch; gap: 0.5rem; margin: 0.5rem 0; }
+.editor > button {
+  flex: none; width: var(--tap-target); min-height: var(--tap-target);
+  border-radius: 50%; border: 2px solid var(--color-ink);
+  background: var(--color-white); color: var(--color-ink);
+  font-size: 1.75rem; line-height: 1; cursor: pointer; padding: 0;
+}
+.editor > button:disabled { opacity: 0.3; cursor: not-allowed; }
+.editor-main { flex: 1; display: flex; flex-direction: column; gap: 0.25rem; }
+.editor-main label { font-weight: 600; font-size: var(--text-sm); text-align: center; }
+.editor-main input {
   min-height: var(--tap-target); border-radius: var(--radius-pill);
   border: 2px solid var(--color-ink); background: var(--color-white);
-  color: var(--color-ink); font-size: var(--text-body); font-family: var(--font-body);
-  padding: 0.5rem 1rem; width: 100%;
+  color: var(--color-ink); font-size: 1.25rem; font-family: var(--font-body); font-weight: 600;
+  padding: 0.5rem 1rem; width: 100%; text-align: center;
 }
-details.options {
-  border: 2px solid var(--color-ink); border-radius: var(--radius-pill);
-  background: var(--color-white); margin: 0.75rem 0;
+/* Preview strip: one chip per player, tap to jump */
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; margin: 0.5rem 0; }
+.chip {
+  min-height: 2.75rem; min-width: 3rem; padding: 0.25rem 0.75rem;
+  border-radius: 999px; border: 2px solid var(--color-ink);
+  background: var(--color-white); color: var(--color-ink);
+  font-family: var(--font-body); font-weight: 600; font-size: var(--text-sm);
+  cursor: pointer;
 }
-details.options summary {
-  min-height: var(--tap-target); display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;
-  cursor: pointer; font-size: var(--text-button);
-}
-details.options .opt-body { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
-.opt-body label { font-weight: 600; font-size: var(--text-sm); }
-.opt-body select {
-  min-height: var(--tap-target); width: 100%; border-radius: 12px;
-  border: 2px solid var(--color-ink); background: var(--color-white); color: var(--color-ink);
-  font-size: var(--text-body); font-family: var(--font-body); padding: 0.5rem;
-}
+.chip.filled { background: var(--color-ink); color: var(--color-white); }
+.chip.current { outline: 3px solid var(--color-ink); outline-offset: 2px; }
+/* Secondary (back) button */
+.btn.secondary { background: transparent; color: var(--color-ink); }
+.opt-body { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.5rem 0; }
 .opt-label {
   font-family: var(--font-display); text-transform: uppercase;
   letter-spacing: 0.03em; font-size: var(--text-sm); margin: 0.25rem 0 0;

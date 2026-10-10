@@ -22,6 +22,8 @@
     allWords: [],
     config: { playerCount: 5, mode: "pair", blank: false, difficulty: "ALL", timer: true },
     setupNames: [],
+    setupStep: 1,       // setup wizard: 1 = players, 2 = options
+    setupEdit: 0,       // player index under edit in the paged editor
     players: [],        // { name, role, alive, score }
     colors: [],         // card color per player-order index
     word: null,
@@ -82,6 +84,8 @@
     if (window.confirm("Quit this round and go back to setup?")) {
       stopTimer();
       S.phase = "setup";
+      S.setupStep = 1;
+      S.setupEdit = 0;
       render();
     }
   }
@@ -178,6 +182,8 @@
     S.guessFor = -1;
     S.pendingBonus = null;
     S.result = null;
+    S.setupStep = 1;
+    S.setupEdit = 0;
     S.phase = "card";
     render();
   }
@@ -245,15 +251,106 @@
     if (S.phase === "final") return vFinal();
   }
 
-  // Screen 1: setup with stepper, scrolling name pills, playful option pickers.
+  // Screen 1: setup wizard.
+  // Step 1 (Players): stepper + one-at-a-time name editor with prev/next
+  // navigation + a preview strip of all players. Step 2 (Options): dedicated
+  // place for mode, difficulty, blank and timer pickers.
   function vSetup() {
     var cfg = S.config;
     while (S.setupNames.length < 12) S.setupNames.push("");
-    var namesHtml = "";
+    if (S.setupEdit >= cfg.playerCount) S.setupEdit = cfg.playerCount - 1;
+    if (S.setupStep === 1) return vSetupPlayers(cfg);
+    return vSetupOptions(cfg);
+  }
+
+  function saveEditor(cfg) {
+    var el = document.getElementById("pname");
+    if (el) S.setupNames[S.setupEdit] = el.value.trim();
+  }
+
+  function stepperHtml(cfg) {
+    return '<div class="stepper">' +
+      '<button id="count-minus" aria-label="Fewer players">−</button>' +
+      '<output id="count-val" aria-live="polite">' + cfg.playerCount + "</output>" +
+      '<button id="count-plus" aria-label="More players">+</button></div>';
+  }
+
+  function wireStepper(cfg) {
+    document.getElementById("count-minus").onclick = function () {
+      saveEditor(cfg);
+      cfg.playerCount = Math.max(4, cfg.playerCount - 1);
+      render();
+    };
+    document.getElementById("count-plus").onclick = function () {
+      saveEditor(cfg);
+      cfg.playerCount = Math.min(12, cfg.playerCount + 1);
+      render();
+    };
+  }
+
+  function chipsHtml(cfg) {
+    var out = "";
     for (var i = 0; i < cfg.playerCount; i++) {
-      namesHtml += '<input id="name-' + i + '" maxlength="24" value="' + esc(S.setupNames[i]) +
-        '" placeholder="Player ' + (i + 1) + '" aria-label="Name of player ' + (i + 1) + '">';
+      var label = S.setupNames[i] || ("P" + (i + 1));
+      out += '<button class="chip' + (S.setupNames[i] ? " filled" : "") +
+        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '" ' +
+        'aria-label="Edit player ' + (i + 1) + '">' + esc(label) + "</button>";
     }
+    return '<div class="chips" role="group" aria-label="Players preview">' + out + "</div>";
+  }
+
+  function wireChips(cfg) {
+    for (var i = 0; i < cfg.playerCount; i++) {
+      (function (idx) {
+        document.getElementById("chip-" + idx).onclick = function () {
+          saveEditor(cfg);
+          S.setupEdit = idx;
+          render();
+        };
+      })(i);
+    }
+  }
+
+  function vSetupPlayers(cfg) {
+    var last = S.setupEdit >= cfg.playerCount - 1;
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+      '<p class="step-tag">Step 1 of 2 · Players</p>' +
+      '<h2 class="screen-title">Who is playing?</h2>' +
+      stepperHtml(cfg) +
+      '<div class="editor">' +
+      '<button id="ed-prev" aria-label="Previous player"' + (S.setupEdit === 0 ? " disabled" : "") + ">‹</button>" +
+      '<div class="editor-main">' +
+      '<label for="pname">Player ' + (S.setupEdit + 1) + " of " + cfg.playerCount + "</label>" +
+      '<input id="pname" maxlength="24" value="' + esc(S.setupNames[S.setupEdit]) + '"' +
+      ' placeholder="Player ' + (S.setupEdit + 1) + '">' +
+      "</div>" +
+      '<button id="ed-next" aria-label="Next player"' + (last ? " disabled" : "") + ">›</button>" +
+      "</div>" +
+      chipsHtml(cfg) +
+      "</div></div>" +
+      '<button class="btn" id="b-to-options">' + SKIP_ICON + "Continue</button>";
+
+    wireStepper(cfg);
+    wireChips(cfg);
+    document.getElementById("ed-prev").onclick = function () {
+      saveEditor(cfg);
+      S.setupEdit = Math.max(0, S.setupEdit - 1);
+      render();
+    };
+    document.getElementById("ed-next").onclick = function () {
+      saveEditor(cfg);
+      S.setupEdit = Math.min(cfg.playerCount - 1, S.setupEdit + 1);
+      render();
+    };
+    document.getElementById("b-to-options").onclick = function () {
+      saveEditor(cfg);
+      S.setupStep = 2;
+      render();
+    };
+  }
+
+  function vSetupOptions(cfg) {
     function segBtn(id, group, val, label) {
       return '<button id="' + id + '" aria-pressed="' + (group === val ? "true" : "false") + '">' +
         esc(label) + "</button>";
@@ -262,15 +359,11 @@
       return '<button class="switch" id="' + id + '" role="switch" aria-checked="' +
         (on ? "true" : "false") + '"><span class="track" aria-hidden="true"></span>' + esc(label) + "</button>";
     }
+    var c = roleCounts(cfg.playerCount, cfg.blank);
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
-      '<h2 class="screen-title">Players</h2>' +
-      '<div class="stepper">' +
-      '<button id="count-minus" aria-label="Fewer players">−</button>' +
-      '<output id="count-val" aria-live="polite">' + cfg.playerCount + "</output>" +
-      '<button id="count-plus" aria-label="More players">+</button></div>' +
-      '<div class="names">' + namesHtml + "</div>" +
-      '<details class="options"><summary>Options</summary><div class="opt-body">' +
+      '<div class="stage stage-pad" style="--card:#F6EE8A"><div class="face">' +
+      '<p class="step-tag">Step 2 of 2 · Options</p>' +
+      '<h2 class="screen-title">Game options</h2>' +
       '<p class="opt-label">Mode</p>' +
       '<div class="seg" role="group" aria-label="Game mode">' +
       segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
@@ -285,47 +378,28 @@
       "</div>" +
       switchBtn("opt-blank", cfg.blank, "Blank role (6+ players)") +
       switchBtn("opt-timer", cfg.timer, "15s clue timer") +
-      "</div></details>" +
-      '<p class="muted" id="role-preview"></p>' +
+      '<p class="muted" id="role-preview">' + cfg.playerCount + " players: " + c.civilians +
+      " civilian(s), " + c.impostors + " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".</p>" +
       "</div></div>" +
-      '<button class="btn" id="b-start">' + SKIP_ICON + "Start game</button>";
+      '<button class="btn" id="b-start">' + SKIP_ICON + "Start game</button>" +
+      '<button class="btn secondary" id="b-back-players">‹ Back</button>';
 
-    function readNames() {
-      for (var k = 0; k < cfg.playerCount; k++) {
-        var el = document.getElementById("name-" + k);
-        if (el) S.setupNames[k] = el.value.trim();
-      }
-    }
     function preview() {
-      var c = roleCounts(cfg.playerCount, cfg.blank);
+      var cc = roleCounts(cfg.playerCount, cfg.blank);
       document.getElementById("role-preview").textContent =
-        cfg.playerCount + " players: " + c.civilians + " civilian(s), " + c.impostors +
-        " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".";
+        cfg.playerCount + " players: " + cc.civilians + " civilian(s), " + cc.impostors +
+        " impostor(s)" + (cc.blank ? ", 1 blank" : "") + ".";
     }
-    preview();
-
-    document.getElementById("count-minus").onclick = function () {
-      readNames();
-      cfg.playerCount = Math.max(4, cfg.playerCount - 1);
-      render();
-    };
-    document.getElementById("count-plus").onclick = function () {
-      readNames();
-      cfg.playerCount = Math.min(12, cfg.playerCount + 1);
-      render();
-    };
-    function pickMode(v) { return function () { readNames(); cfg.mode = v; render(); }; }
+    function pickMode(v) { return function () { cfg.mode = v; render(); }; }
     document.getElementById("opt-mode-pair").onclick = pickMode("pair");
     document.getElementById("opt-mode-single").onclick = pickMode("single");
-    function pickDiff(v) { return function () { readNames(); cfg.difficulty = v; render(); }; }
+    function pickDiff(v) { return function () { cfg.difficulty = v; render(); }; }
     document.getElementById("opt-diff-ALL").onclick = pickDiff("ALL");
     document.getElementById("opt-diff-E").onclick = pickDiff("E");
     document.getElementById("opt-diff-M").onclick = pickDiff("M");
     document.getElementById("opt-diff-H").onclick = pickDiff("H");
-    // Switches flip in place (no full re-render, so focus and scroll stay put).
     function flip(key, id) {
       return function () {
-        readNames();
         cfg[key] = !cfg[key];
         var b = document.getElementById(id);
         if (b) b.setAttribute("aria-checked", cfg[key] ? "true" : "false");
@@ -334,8 +408,11 @@
     }
     document.getElementById("opt-blank").onclick = flip("blank", "opt-blank");
     document.getElementById("opt-timer").onclick = flip("timer", "opt-timer");
+    document.getElementById("b-back-players").onclick = function () {
+      S.setupStep = 1;
+      render();
+    };
     document.getElementById("b-start").onclick = function () {
-      readNames();
       if (S.players.length !== cfg.playerCount) {
         S.players = [];
         for (var k = 0; k < cfg.playerCount; k++) S.players.push({ name: "", role: "civilian", alive: true, score: 0 });
