@@ -8,8 +8,9 @@
 
   var REVEAL_MS = 3000; // carousel runs 3 seconds, then the impostor is shown
 
-  // Card colors cycle by PLAYER ORDER, never by role (privacy rule).
-  var CARD_COLORS = ["#88F5F5", "#F4B3D4", "#F6EE8A", "#CDBDF7", "#A9F2B8", "#FFC8A2"];
+  // Card colors follow the player's avatar background (standard rule across
+  // the app: a player's card is always their avatar color, never their role).
+  var AVATAR_BG = ["#ffe3ea", "#e3edff", "#e2f5e9", "#fdf1d4", "#efe6ff"];
 
   var SKIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
     '<path d="M6 5l9 7-9 7V5zm10 0h2v14h-2V5z"/></svg>';
@@ -177,7 +178,7 @@
     }
     for (var j = 0; j < n; j++) S.players[j].name = S.setupNames[j] || "";
     S.colors = [];
-    for (var c = 0; c < n; c++) S.colors.push(CARD_COLORS[c % CARD_COLORS.length]);
+    for (var c = 0; c < n; c++) S.colors.push(avatarBg(c));
     S.word = word;
     S.cardIndex = 0;
     S.clueRound = 1;
@@ -346,12 +347,11 @@
   function vSetupReview(cfg) {
     var rows = "";
     for (var i = 0; i < cfg.playerCount; i++) {
-      rows += '<li><img src="' + avatarFor(i) + '" alt="" width="40" height="40">' +
-        esc(S.setupNames[i]) + "</li>";
+      rows += '<li style="background:' + avatarBg(i) + '"><img src="' + avatarFor(i) +
+        '" alt="" width="40" height="40">' + esc(S.setupNames[i]) + "</li>";
     }
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
-      '<p class="step-tag">Step 2 of 3 · Review</p>' +
       '<h2 class="screen-title">Added players</h2>' +
       '<ul class="roster">' + rows + "</ul>" +
       "</div></div>" +
@@ -370,8 +370,7 @@
 
   function vSetupOptions(cfg) {
     if (cfg.playerCount < 6) cfg.blank = false; // blank needs 6+ players: hide it
-    var DIFF_ORDER = ["ALL", "E", "M", "H"];
-    var DIFF_LABEL = { ALL: "All", E: "Easy", M: "Medium", H: "Hard" };
+    cfg.difficulty = "ALL"; // difficulty filter removed: full word variety, zero clutter
     function segBtn(id, group, val, title) {
       return '<button id="' + id + '" aria-pressed="' + (group === val ? "true" : "false") + '">' +
         "<b>" + esc(title) + "</b></button>";
@@ -390,8 +389,6 @@
       segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
       segBtn("opt-mode-single", cfg.mode, "single", "Single Word") +
       "</div>" +
-      '<button class="switch" id="opt-diff-cycle"><span>Difficulty</span>' +
-      '<span class="badge">' + DIFF_LABEL[cfg.difficulty] + "</span></button>" +
       (cfg.playerCount >= 6 ? switchBtn("opt-blank", cfg.blank, "Blank role") : "") +
       '<p class="muted" id="role-preview">' + cfg.playerCount + " players: " + c.civilians +
       " civilian(s), " + c.impostors + " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".</p>" +
@@ -402,10 +399,6 @@
     function pickMode(v) { return function () { cfg.mode = v; render(); }; }
     document.getElementById("opt-mode-pair").onclick = pickMode("pair");
     document.getElementById("opt-mode-single").onclick = pickMode("single");
-    document.getElementById("opt-diff-cycle").onclick = function () {
-      cfg.difficulty = DIFF_ORDER[(DIFF_ORDER.indexOf(cfg.difficulty) + 1) % DIFF_ORDER.length];
-      render();
-    };
     function flip(key) {
       return function () {
         cfg[key] = !cfg[key];
@@ -523,7 +516,7 @@
   function vPlay() {
     var last = S.clueRound >= S.maxRounds;
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#A9F2B8"><div class="face centered">' +
+      '<div class="stage stage-pad" style="--card:' + avatarBg(S.starter) + '"><div class="face centered">' +
       '<img class="avatar" src="' + avatarFor(S.starter) + '" alt="">' +
       '<h2 class="screen-title">' + esc(playerLabel(S.starter)) + " starts</h2>" +
       "<p>One word each. Then reveal.</p>" +

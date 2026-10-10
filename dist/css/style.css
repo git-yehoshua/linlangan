@@ -124,14 +124,14 @@ input.nick {
 /* Reveal carousel row */
 .reveal-row { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
 /* Added-players review roster */
-.roster { list-style: none; margin: 0.5rem 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.5rem; }
+.roster { list-style: none; margin: 0.25rem 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.4rem; }
 .roster li {
-  display: flex; align-items: center; gap: 0.75rem;
-  min-height: var(--tap-target); padding: 0.35rem 1rem;
+  display: flex; align-items: center; gap: 0.6rem;
+  min-height: 3rem; padding: 0.25rem 0.8rem;
   border: 2px solid var(--color-ink); border-radius: var(--radius-pill);
-  background: var(--color-white); font-weight: 600; font-size: 1.1rem;
+  font-weight: 600; font-size: var(--text-body);
 }
-.roster img { width: 2.5rem; height: 2.5rem; flex: none; }
+.roster img { width: 2rem; height: 2rem; flex: none; }
 /* Avatars (self-hosted DiceBear, assigned by player order) */
 .avatar { width: 3.5rem; height: 3.5rem; }
 .face.centered .avatar { width: 4rem; height: 4rem; }
