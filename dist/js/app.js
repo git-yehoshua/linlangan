@@ -79,6 +79,12 @@
     return (S.players[i] && S.players[i].name) || ("Player " + (i + 1));
   }
 
+  // Self-hosted DiceBear avatars (dist/avatars). Assigned by player order,
+  // never by role — same privacy rule as card colors. Fully offline.
+  function avatarFor(i) {
+    return "avatars/p" + ((i % 12) + 1) + ".svg";
+  }
+
   function quitToSetup() {
     if (S.phase === "setup") return;
     if (window.confirm("Quit this round and go back to setup?")) {
@@ -294,7 +300,8 @@
     for (var i = 0; i < cfg.playerCount; i++) {
       var label = S.setupNames[i] || ("P" + (i + 1));
       out += '<span class="chip' + (S.setupNames[i] ? " filled" : "") +
-        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '">' + esc(label) + "</span>";
+        (i === S.setupEdit ? " current" : "") + '" id="chip-' + i + '">' +
+        '<img src="' + avatarFor(i) + '" alt="" width="28" height="28">' + esc(label) + "</span>";
     }
     return '<div class="chips" role="group" aria-label="Added players">' + out + "</div>";
   }
@@ -435,9 +442,12 @@
 
     root.innerHTML =
       '<div class="stage settle" id="stage" style="--card:' + color + '">' +
-      '<div class="face" id="face" aria-hidden="true"><h2 class="name">' + esc(name) + "</h2>" + pillHtml + "</div>" +
+      '<div class="face" id="face" aria-hidden="true">' +
+      '<img class="avatar" src="' + avatarFor(i) + '" alt="">' +
+      '<h2 class="name">' + esc(name) + "</h2>" + pillHtml + "</div>" +
       '<div class="sheet" id="sheet" tabindex="0" role="button" ' +
       'aria-label="' + esc(name) + ': swipe up or hold Space to peek at your word. Release to hide.">' +
+      '<img class="avatar" src="' + avatarFor(i) + '" alt="">' +
       '<h2 class="name">' + esc(name) + "</h2>" +
       '<div class="hint"><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
       'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -520,6 +530,7 @@
     }
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#A9F2B8"><div class="face centered">' +
+      '<img class="avatar" src="' + avatarFor(S.starter) + '" alt="">' +
       '<h2 class="screen-title">' + esc(playerLabel(S.starter)) + " starts</h2>" +
       "<p>One word each. Then vote.</p>" +
       '<p class="muted">Clue round ' + S.clueRound + " of " + S.maxRounds +
@@ -574,6 +585,7 @@
       if (!p.alive) return;
       pills += '<button class="vote-pill" id="vote-pick-' + i + '" aria-pressed="' +
         (S.selected === i ? "true" : "false") + '" style="--pick:' + S.colors[i] + '">' +
+        '<img src="' + avatarFor(i) + '" alt="" width="32" height="32">' +
         esc(playerLabel(i)) + "</button>";
     });
     root.innerHTML =

@@ -117,6 +117,12 @@ header { position: relative; padding-top: 0.5rem; }
 }
 .chip.filled { background: var(--color-ink); color: var(--color-white); }
 .chip.current { outline: 3px solid var(--color-ink); outline-offset: 2px; }
+.chip img { width: 1.75rem; height: 1.75rem; vertical-align: middle; margin-right: 0.35rem; }
+/* Avatars (self-hosted DiceBear, assigned by player order) */
+.avatar { width: 4rem; height: 4rem; }
+.face.centered .avatar { width: 4.5rem; height: 4.5rem; }
+.vote-pill { display: flex; align-items: center; gap: 0.6rem; }
+.vote-pill img { width: 2rem; height: 2rem; flex: none; }
 /* Secondary (back) button */
 .btn.secondary { background: transparent; color: var(--color-ink); }
 .opt-body { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.5rem 0; }
