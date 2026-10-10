@@ -273,9 +273,8 @@
   }
 
   function vSetupPlayers(cfg) {
-    var filled = S.setupNames[S.setupEdit].trim() !== "";
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
       '<p class="step-tag">Step 1 of 3 · Players</p>' +
       '<h2 class="screen-title">Who is playing?</h2>' +
       stepperHtml(cfg) +
@@ -283,42 +282,39 @@
       '<p class="muted">Player ' + (S.setupEdit + 1) + " of " + cfg.playerCount + "</p>" +
       '<label class="offscreen" for="pname">Nickname for player ' + (S.setupEdit + 1) + "</label>" +
       '<input id="pname" class="nick" maxlength="24" value="' + esc(S.setupNames[S.setupEdit]) + '"' +
-      ' placeholder="Type a nickname" autocomplete="off">' +
-      '<p class="req-hint" id="req-hint">Nickname required to continue.</p>' +
+      ' placeholder="Type a nickname" autocomplete="off" aria-describedby="req-hint">' +
+      '<p class="req-hint" id="req-hint" role="alert">Nickname required to continue.</p>' +
       "</div></div>" +
       '<div class="mini-nav' + (S.setupEdit === 0 ? " single" : "") + '" id="setup-nav">' +
       (S.setupEdit === 0 ? "" : '<button class="btn-mini" id="ed-prev">Prev</button>') +
-      '<button class="btn-mini" id="ed-next"' + (filled ? "" : " disabled") + ">Next</button>" +
+      '<button class="btn-mini" id="ed-next">Next</button>' +
       "</div>";
 
     wireStepper(cfg);
     var input = document.getElementById("pname");
-    var nextMini = document.getElementById("ed-next");
     var hint = document.getElementById("req-hint");
     function norm(s) { return String(s).trim().toLowerCase().replace(/\s+/g, " "); }
     // A nickname is taken when another player already uses it (case-insensitive).
-    function isDup() {
-      var v = norm(input.value);
-      if (!v) return false;
+    function dupOf(v) {
       for (var k = 0; k < cfg.playerCount; k++) {
-        if (k !== S.setupEdit && norm(S.setupNames[k]) === v) return true;
+        if (k !== S.setupEdit && norm(S.setupNames[k]) === norm(v)) return true;
       }
       return false;
     }
-    function gate() {
-      var v = input.value.trim();
-      var dup = isDup();
-      nextMini.disabled = (v === "" || dup);
-      if (hint) hint.textContent = dup ? "That nickname is already taken." : "Nickname required to continue.";
+    function err(msg) {
+      if (hint) { hint.textContent = msg; hint.className = "req-hint err"; }
     }
-    input.oninput = gate;
+    function clearErr() {
+      if (hint) { hint.textContent = "Nickname required to continue."; hint.className = "req-hint"; }
+    }
+    input.oninput = function () {
+      if (hint && hint.className.indexOf("err") >= 0) clearErr();
+    };
     function advance() {
       saveEditor(cfg);
       var v = S.setupNames[S.setupEdit].trim();
-      if (v === "") return; // nicknames are required
-      for (var d = 0; d < cfg.playerCount; d++) {
-        if (d !== S.setupEdit && norm(S.setupNames[d]) === norm(v)) return; // no duplicates
-      }
+      if (v === "") { err("Please type a nickname to continue."); return; }
+      if (dupOf(v)) { err("That nickname is already taken."); return; }
       if (S.setupEdit >= cfg.playerCount - 1) {
         // Safety net: never leave an unnamed player behind.
         for (var k = 0; k < cfg.playerCount; k++) {
@@ -331,7 +327,7 @@
         render();
       }
     }
-    nextMini.onclick = advance;
+    document.getElementById("ed-next").onclick = advance;
     var prevMini = document.getElementById("ed-prev");
     if (prevMini) prevMini.onclick = function () {
       saveEditor(cfg);
