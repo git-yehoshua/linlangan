@@ -234,6 +234,9 @@
   // ---------- screens ----------
   function render() {
     stopTimer();
+    // The close button only makes sense mid-round; hide it on meta screens.
+    var quit = document.getElementById("quit");
+    if (quit) quit.style.display = (S.phase === "setup" || S.phase === "final") ? "none" : "";
     if (S.phase === "setup") return vSetup();
     if (S.phase === "card") return vCard();
     if (S.phase === "play") return vPlay();
@@ -242,7 +245,7 @@
     if (S.phase === "final") return vFinal();
   }
 
-  // Screen 1: setup with stepper, name pills, collapsed options.
+  // Screen 1: setup with stepper, scrolling name pills, playful option pickers.
   function vSetup() {
     var cfg = S.config;
     while (S.setupNames.length < 12) S.setupNames.push("");
@@ -251,11 +254,13 @@
       namesHtml += '<input id="name-' + i + '" maxlength="24" value="' + esc(S.setupNames[i]) +
         '" placeholder="Player ' + (i + 1) + '" aria-label="Name of player ' + (i + 1) + '">';
     }
-    function sel(id, val, opts) {
-      return '<label for="' + id + '">' + id.replace("opt-", "") + "</label>" +
-        '<select id="' + id + '">' + opts.map(function (o) {
-          return '<option value="' + o[0] + '"' + (val === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
-        }).join("") + "</select>";
+    function segBtn(id, group, val, label) {
+      return '<button id="' + id + '" aria-pressed="' + (group === val ? "true" : "false") + '">' +
+        esc(label) + "</button>";
+    }
+    function switchBtn(id, on, label) {
+      return '<button class="switch" id="' + id + '" role="switch" aria-checked="' +
+        (on ? "true" : "false") + '"><span class="track" aria-hidden="true"></span>' + esc(label) + "</button>";
     }
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
@@ -266,10 +271,20 @@
       '<button id="count-plus" aria-label="More players">+</button></div>' +
       '<div class="names">' + namesHtml + "</div>" +
       '<details class="options"><summary>Options</summary><div class="opt-body">' +
-      sel("opt-mode", cfg.mode, [["pair", "Mode: Word Pair"], ["single", "Mode: Single Word"]]) +
-      sel("opt-diff", cfg.difficulty, [["ALL", "Difficulty: All"], ["E", "Difficulty: Easy"], ["M", "Difficulty: Medium"], ["H", "Difficulty: Hard"]]) +
-      '<label class="check-row"><input type="checkbox" id="opt-blank"' + (cfg.blank ? " checked" : "") + "> Blank role (6+ players)</label>" +
-      '<label class="check-row"><input type="checkbox" id="opt-timer"' + (cfg.timer ? " checked" : "") + "> 15s clue timer</label>" +
+      '<p class="opt-label">Mode</p>' +
+      '<div class="seg" role="group" aria-label="Game mode">' +
+      segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
+      segBtn("opt-mode-single", cfg.mode, "single", "Single Word") +
+      "</div>" +
+      '<p class="opt-label">Difficulty</p>' +
+      '<div class="seg" role="group" aria-label="Difficulty">' +
+      segBtn("opt-diff-ALL", cfg.difficulty, "ALL", "All") +
+      segBtn("opt-diff-E", cfg.difficulty, "E", "Easy") +
+      segBtn("opt-diff-M", cfg.difficulty, "M", "Med") +
+      segBtn("opt-diff-H", cfg.difficulty, "H", "Hard") +
+      "</div>" +
+      switchBtn("opt-blank", cfg.blank, "Blank role (6+ players)") +
+      switchBtn("opt-timer", cfg.timer, "15s clue timer") +
       "</div></details>" +
       '<p class="muted" id="role-preview"></p>' +
       "</div></div>" +
@@ -299,12 +314,28 @@
       cfg.playerCount = Math.min(12, cfg.playerCount + 1);
       render();
     };
+    function pickMode(v) { return function () { readNames(); cfg.mode = v; render(); }; }
+    document.getElementById("opt-mode-pair").onclick = pickMode("pair");
+    document.getElementById("opt-mode-single").onclick = pickMode("single");
+    function pickDiff(v) { return function () { readNames(); cfg.difficulty = v; render(); }; }
+    document.getElementById("opt-diff-ALL").onclick = pickDiff("ALL");
+    document.getElementById("opt-diff-E").onclick = pickDiff("E");
+    document.getElementById("opt-diff-M").onclick = pickDiff("M");
+    document.getElementById("opt-diff-H").onclick = pickDiff("H");
+    // Switches flip in place (no full re-render, so focus and scroll stay put).
+    function flip(key, id) {
+      return function () {
+        readNames();
+        cfg[key] = !cfg[key];
+        var b = document.getElementById(id);
+        if (b) b.setAttribute("aria-checked", cfg[key] ? "true" : "false");
+        preview();
+      };
+    }
+    document.getElementById("opt-blank").onclick = flip("blank", "opt-blank");
+    document.getElementById("opt-timer").onclick = flip("timer", "opt-timer");
     document.getElementById("b-start").onclick = function () {
       readNames();
-      cfg.mode = document.getElementById("opt-mode").value;
-      cfg.difficulty = document.getElementById("opt-diff").value;
-      cfg.blank = document.getElementById("opt-blank").checked;
-      cfg.timer = document.getElementById("opt-timer").checked;
       if (S.players.length !== cfg.playerCount) {
         S.players = [];
         for (var k = 0; k < cfg.playerCount; k++) S.players.push({ name: "", role: "civilian", alive: true, score: 0 });
