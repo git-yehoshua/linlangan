@@ -6,7 +6,7 @@
 (function () {
   "use strict";
 
-  var CLUE_SECONDS = 15;
+  var REVEAL_MS = 3000; // carousel runs 3 seconds, then the impostor is shown
 
   // Card colors cycle by PLAYER ORDER, never by role (privacy rule).
   var CARD_COLORS = ["#88F5F5", "#F4B3D4", "#F6EE8A", "#CDBDF7", "#A9F2B8", "#FFC8A2"];
@@ -20,7 +20,7 @@
   var S = {
     phase: "setup",
     allWords: [],
-    config: { playerCount: 5, mode: "pair", blank: false, difficulty: "ALL", timer: true },
+    config: { playerCount: 5, mode: "pair", blank: false, difficulty: "ALL" },
     setupNames: [],
     setupStep: 1,       // setup wizard: 1 = players, 2 = options
     setupEdit: 0,       // player index under edit in the paged editor
@@ -32,12 +32,8 @@
     clueRound: 1,
     maxRounds: 2,
     starter: 0,
-    timerLeft: CLUE_SECONDS,
     timerId: null,
-    selected: -1,       // vote pick (player index)
-    revoted: false,
     guessFor: -1,
-    pendingBonus: null,
     result: null
   };
 
@@ -72,7 +68,7 @@
   }
 
   function stopTimer() {
-    if (S.timerId) { clearInterval(S.timerId); S.timerId = null; }
+    if (S.timerId) { clearInterval(S.timerId); clearTimeout(S.timerId); S.timerId = null; }
   }
 
   function playerLabel(i) {
@@ -182,30 +178,12 @@
     S.clueRound = 1;
     S.maxRounds = n >= 8 ? 3 : 2;
     S.starter = Math.floor(Math.random() * n);
-    S.timerLeft = CLUE_SECONDS;
-    S.selected = -1;
-    S.revoted = false;
     S.guessFor = -1;
-    S.pendingBonus = null;
     S.result = null;
     S.setupStep = 1;
     S.setupEdit = 0;
     S.phase = "card";
     render();
-  }
-
-  // ---------- win check (PRD FR6) ----------
-  function checkWin() {
-    var alive = S.players.filter(function (p) { return p.alive; });
-    var aliveImp = alive.filter(function (p) { return p.role === "impostor"; }).length;
-    var aliveCiv = alive.filter(function (p) { return p.role === "civilian"; }).length;
-    var totalImp = S.players.filter(function (p) { return p.role === "impostor"; }).length;
-    var elimImp = S.players.filter(function (p) { return p.role === "impostor" && !p.alive; }).length;
-    if (elimImp >= totalImp) return { winner: "civilians", reason: "All impostors were caught, and no correct guess was made." };
-    if (aliveImp >= aliveCiv && aliveCiv > 0) {
-      return { winner: "impostors", reason: "Impostors now equal or outnumber the remaining civilians." };
-    }
-    return null;
   }
 
   // ---------- scoring (PRD FR7; blank correct guess = +3) ----------
@@ -232,12 +210,7 @@
   }
 
   function finishRound(outcome, opts) {
-    opts = opts || {};
-    if (typeof S.pendingBonus === "number" && (typeof opts.firstVoter !== "number" || opts.firstVoter < 0)) {
-      opts.firstVoter = S.pendingBonus;
-    }
-    S.pendingBonus = null;
-    applyScoring(outcome, opts);
+    applyScoring(outcome, opts || {});
     S.result = outcome;
     S.phase = "result";
     render();
@@ -252,7 +225,10 @@
     if (S.phase === "setup") return vSetup();
     if (S.phase === "card") return vCard();
     if (S.phase === "play") return vPlay();
-    if (S.phase === "vote") return vVote();
+    if (S.phase === "reveal") return vRevealCarousel();
+    if (S.phase === "impostor") return vImpostorReveal();
+    if (S.phase === "guess") return vGuessImpostor();
+    if (S.phase === "blankguess") return vGuessBlank();
     if (S.phase === "result") return vResult();
     if (S.phase === "final") return vFinal();
   }
@@ -261,7 +237,7 @@
   // Step 1 (Players): stepper + big avatar preview + nickname input,
   // main Next button plus small Prev/Next buttons below.
   // Step 2 (Added players): review roster, Confirm to continue.
-  // Step 3 (Options): dedicated place for mode, difficulty, blank and timer.
+  // Step 3 (Options): dedicated place for mode, difficulty and blank.
   function vSetup() {
     var cfg = S.config;
     while (S.setupNames.length < 12) S.setupNames.push("");
@@ -310,21 +286,16 @@
       ' placeholder="Type a nickname" autocomplete="off">' +
       '<p class="req-hint" id="req-hint">Nickname required to continue.</p>' +
       "</div></div>" +
-      '<button class="btn" id="b-next-player"' + (filled ? "" : " disabled") + ">" +
-      SKIP_ICON + "Next</button>" +
-      '<div class="mini-nav">' +
-      '<button class="btn-mini" id="ed-prev"' + (S.setupEdit === 0 ? " disabled" : "") + ">Prev</button>" +
+      '<div class="mini-nav' + (S.setupEdit === 0 ? " single" : "") + '" id="setup-nav">' +
+      (S.setupEdit === 0 ? "" : '<button class="btn-mini" id="ed-prev">Prev</button>') +
       '<button class="btn-mini" id="ed-next"' + (filled ? "" : " disabled") + ">Next</button>" +
       "</div>";
 
     wireStepper(cfg);
     var input = document.getElementById("pname");
-    var nextBtn = document.getElementById("b-next-player");
     var nextMini = document.getElementById("ed-next");
     input.oninput = function () {
-      var ok = input.value.trim() !== "";
-      nextBtn.disabled = !ok;
-      nextMini.disabled = !ok;
+      nextMini.disabled = input.value.trim() === "";
     };
     function advance() {
       saveEditor(cfg);
@@ -341,9 +312,9 @@
         render();
       }
     }
-    nextBtn.onclick = advance;
     nextMini.onclick = advance;
-    document.getElementById("ed-prev").onclick = function () {
+    var prevMini = document.getElementById("ed-prev");
+    if (prevMini) prevMini.onclick = function () {
       saveEditor(cfg);
       S.setupEdit = Math.max(0, S.setupEdit - 1);
       render();
@@ -402,7 +373,6 @@
       segBtn("opt-diff-H", cfg.difficulty, "H", "Hard") +
       "</div>" +
       switchBtn("opt-blank", cfg.blank, "Blank role (6+ players)") +
-      switchBtn("opt-timer", cfg.timer, "15s clue timer") +
       '<p class="muted" id="role-preview">' + cfg.playerCount + " players: " + c.civilians +
       " civilian(s), " + c.impostors + " impostor(s)" + (c.blank ? ", 1 blank" : "") + ".</p>" +
       "</div></div>" +
@@ -432,7 +402,6 @@
       };
     }
     document.getElementById("opt-blank").onclick = flip("blank", "opt-blank");
-    document.getElementById("opt-timer").onclick = flip("timer", "opt-timer");
     document.getElementById("b-back-review").onclick = function () {
       S.setupStep = 2;
       render();
@@ -538,179 +507,133 @@
     };
   }
 
-  // Screen 3: play. Mint card, starter, round counter, rules, optional timer.
+  // Screen 3: play. Mint card, starter, round counter, one-line rules.
   function vPlay() {
     var last = S.clueRound >= S.maxRounds;
-    var timerHtml = "";
-    if (S.config.timer) {
-      timerHtml = '<div class="timer" id="t-left">' + S.timerLeft + 's</div>' +
-        '<button class="btn" id="b-timer">' + SKIP_ICON + "Start 15s timer</button>";
-    }
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#A9F2B8"><div class="face centered">' +
       '<img class="avatar" src="' + avatarFor(S.starter) + '" alt="">' +
       '<h2 class="screen-title">' + esc(playerLabel(S.starter)) + " starts</h2>" +
-      "<p>One word each. Then vote.</p>" +
+      "<p>One word each. Then reveal.</p>" +
       '<p class="muted">Clue round ' + S.clueRound + " of " + S.maxRounds +
       ". Discussion afterwards: about 60&ndash;90s.</p>" +
-      timerHtml +
       (last ? "" : '<button class="btn" id="b-next-round">' + SKIP_ICON + "Next clue round</button>") +
       "</div></div>" +
-      '<button class="btn" id="b-vote">' + SKIP_ICON + "Vote</button>";
+      '<button class="btn" id="b-reveal">' + SKIP_ICON + "Reveal the impostor</button>";
 
-    if (S.config.timer) wireTimer();
     var nx = document.getElementById("b-next-round");
-    if (nx) nx.onclick = function () { S.clueRound++; S.timerLeft = CLUE_SECONDS; render(); };
-    document.getElementById("b-vote").onclick = function () {
-      S.selected = -1;
-      S.phase = "vote";
+    if (nx) nx.onclick = function () { S.clueRound++; render(); };
+    document.getElementById("b-reveal").onclick = function () {
+      S.phase = "reveal";
       render();
     };
   }
 
-  function wireTimer() {
-    var btn = document.getElementById("b-timer");
-    var el = document.getElementById("t-left");
-    function armStart() {
-      btn.innerHTML = SKIP_ICON + "Start 15s timer";
-      btn.onclick = onStart;
-    }
-    function onStart() {
-      stopTimer();
-      S.timerLeft = CLUE_SECONDS;
-      if (el) el.textContent = CLUE_SECONDS + "s";
-      btn.innerHTML = SKIP_ICON + "Reset timer";
-      btn.onclick = onReset;
-      S.timerId = setInterval(function () {
-        S.timerLeft--;
-        if (el) el.textContent = Math.max(0, S.timerLeft) + "s";
-        if (S.timerLeft <= 0) { stopTimer(); S.timerLeft = CLUE_SECONDS; armStart(); }
-      }, 1000);
-    }
-    function onReset() {
-      stopTimer();
-      S.timerLeft = CLUE_SECONDS;
-      if (el) el.textContent = CLUE_SECONDS + "s";
-      armStart();
-    }
-    armStart();
+  // Screen 4: impostor carousel. Avatar cards spin for 3 seconds, then land
+  // on the impostor. No voting: the reveal itself ends the round.
+  function impostorIndexes() {
+    var out = [];
+    S.players.forEach(function (p, i) { if (p.role === "impostor") out.push(i); });
+    return out;
   }
 
-  // Screen 4: vote with name pills. Selected pill fills with its card color.
-  function vVote() {
-    var pills = "";
-    S.players.forEach(function (p, i) {
-      if (!p.alive) return;
-      pills += '<button class="vote-pill" id="vote-pick-' + i + '" aria-pressed="' +
-        (S.selected === i ? "true" : "false") + '" style="--pick:' + S.colors[i] + '">' +
-        '<img src="' + avatarFor(i) + '" alt="" width="32" height="32">' +
-        esc(playerLabel(i)) + "</button>";
-    });
+  function vRevealCarousel() {
+    var order = shuffle(S.players.map(function (p, i) { return i; }));
+    var imps = impostorIndexes();
+    // Land the final frame on an impostor.
+    var frames = Math.ceil(REVEAL_MS / 110);
+    order[(frames - 1) % order.length] = imps[0];
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
-      '<h2 class="screen-title">Who is it?</h2>' +
-      '<p class="muted">Tap a name, then confirm.</p>' +
-      '<div class="vote-grid">' + pills + "</div>" +
-      (S.revoted ? '<p class="muted">Revote after the tie.</p>' : "") +
+      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
+      '<p class="step-tag">Finding the impostor</p>' +
+      '<img class="avatar-big" id="reveal-avatar" src="' + avatarFor(order[0]) + '" alt="">' +
+      '<h2 class="screen-title" id="reveal-name">?</h2>' +
       "</div></div>" +
-      '<button class="btn" id="b-confirm"' + (S.selected < 0 ? " disabled" : "") + ">" + SKIP_ICON + "Confirm</button>" +
-      '<button class="btn" id="b-tie">' + SKIP_ICON + "Vote tied</button>";
+      '<button class="btn secondary" id="b-skip-reveal">Skip</button>';
 
-    S.players.forEach(function (p, i) {
-      if (!p.alive) return;
-      document.getElementById("vote-pick-" + i).onclick = function () {
-        S.selected = i;
-        render();
-      };
-    });
-    document.getElementById("b-confirm").onclick = function () {
-      if (S.selected >= 0) eliminate(S.selected);
-    };
-    document.getElementById("b-tie").onclick = function () {
-      if (!S.revoted) {
-        S.revoted = true; // one revote
-        render();
-      } else {
-        // Still tied: nobody eliminated, another clue round.
-        S.revoted = false;
-        S.maxRounds++;
-        S.phase = "play";
-        render();
-      }
-    };
-  }
-
-  function eliminate(idx) {
-    S.players[idx].alive = false;
-    var role = S.players[idx].role;
-    if (role === "impostor" || role === "blank") {
-      S.guessFor = idx;
-      vGuess(); // final-guess step
-      return;
+    var reduced = (typeof window !== "undefined" && window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (reduced) { S.phase = "impostor"; render(); return; }
+    var img = document.getElementById("reveal-avatar");
+    var start = Date.now();
+    function frame() {
+      var t = Date.now() - start;
+      var p = order[Math.floor(t / 110) % order.length];
+      if (img) img.setAttribute("src", avatarFor(p));
+      if (t >= REVEAL_MS) { S.phase = "impostor"; render(); return; }
+      S.timerId = setTimeout(frame, 110);
     }
-    vElimReveal(idx, role);
-  }
-
-  // Elimination reveal for a civilian (or blank already handled): show role, continue.
-  function vElimReveal(idx, role) {
-    var line = role === "blank" ? "was the blank" : "was a civilian";
-    root.innerHTML =
-      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
-      '<h2 class="screen-title">' + esc(playerLabel(idx)) + " " + line + "</h2>" +
-      "<p>No final guess. The game goes on.</p>" +
-      "</div></div>" +
-      '<button class="btn" id="b-continue">' + SKIP_ICON + "Continue</button>";
-    document.getElementById("b-continue").onclick = function () {
-      var win = checkWin();
-      if (win) { finishRound(win, { guessCorrect: false }); return; }
-      S.maxRounds++;
-      S.revoted = false;
-      S.phase = "play";
+    S.timerId = setTimeout(frame, 110);
+    document.getElementById("b-skip-reveal").onclick = function () {
+      S.phase = "impostor";
       render();
     };
   }
 
-  // Final-guess step for an eliminated impostor or blank.
-  function vGuess() {
-    var idx = S.guessFor;
-    var p = S.players[idx];
-    var isBlank = p.role === "blank";
-    var line = isBlank ? "was the blank" : "was the impostor";
-    var firstOpts = '<option value="-1">Nobody / skip</option>' + S.players.map(function (q, i) {
-      if (q.role !== "civilian") return "";
-      return '<option value="' + i + '">' + esc(playerLabel(i)) + "</option>";
+  // Screen 5: the reveal. Roles are public now, so the pink card is safe.
+  function vImpostorReveal() {
+    var imps = impostorIndexes();
+    S.guessFor = imps[0];
+    var line = imps.length > 1
+      ? imps.map(function (i) { return playerLabel(i); }).join(" and ") + " were the impostors"
+      : playerLabel(imps[0]) + " was the impostor";
+    var faces = imps.map(function (i) {
+      return '<img class="avatar" src="' + avatarFor(i) + '" alt="">';
     }).join("");
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
-      '<h2 class="screen-title">' + esc(playerLabel(idx)) + " " + line + "</h2>" +
-      "<p>Final guess: name the secret word now. " +
-      (isBlank ? "A correct guess wins the game for the blank."
-               : "A correct guess steals the win for the impostors.") +
-      ' (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
-      '<label for="f-first">Who called them out first? (civilian +1)</label>' +
-      '<select id="f-first">' + firstOpts + "</select>" +
+      '<div class="stage stage-pad" style="--card:#F4B3D4"><div class="face centered">' +
+      '<div class="reveal-row">' + faces + "</div>" +
+      '<h2 class="screen-title">' + esc(line) + "</h2>" +
       "</div></div>" +
-      '<button class="btn" id="b-right">' + SKIP_ICON + "Guess correct</button>" +
-      '<button class="btn" id="b-wrong">' + SKIP_ICON + "Guess wrong</button>";
-    document.getElementById("b-right").onclick = function () {
-      var first = parseInt(document.getElementById("f-first").value, 10);
-      if (isBlank) {
-        finishRound({ winner: "blank", reason: "The blank guessed the secret word." },
-          { guessCorrect: true, guessBy: "blank", firstVoter: first });
-      } else {
-        finishRound({ winner: "impostors", reason: "The eliminated impostor guessed the secret word." },
-          { guessCorrect: true, guessBy: "impostor", firstVoter: first });
-      }
-    };
-    document.getElementById("b-wrong").onclick = function () {
-      var first = parseInt(document.getElementById("f-first").value, 10);
-      var win = checkWin();
-      if (win) { finishRound(win, { guessCorrect: false, firstVoter: first }); return; }
-      S.maxRounds++;
-      S.revoted = false;
-      S.pendingBonus = first;
-      S.phase = "play";
+      '<button class="btn" id="b-to-guess">' + SKIP_ICON + "Final guess</button>";
+    document.getElementById("b-to-guess").onclick = function () {
+      S.phase = "guess";
       render();
+    };
+  }
+
+  // Final guess: the revealed impostor names the secret word to steal the win.
+  function vGuessImpostor() {
+    var idx = S.guessFor;
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
+      '<img class="avatar" src="' + avatarFor(idx) + '" alt="">' +
+      '<h2 class="screen-title">Final guess</h2>' +
+      "<p>" + esc(playerLabel(idx)) + ", name the secret word now. A correct guess steals " +
+      'the win for the impostors. (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
+      "</div></div>" +
+      '<button class="btn" id="b-guess-right">' + SKIP_ICON + "Guess correct</button>" +
+      '<button class="btn" id="b-guess-wrong">' + SKIP_ICON + "Guess wrong</button>";
+    document.getElementById("b-guess-right").onclick = function () {
+      finishRound({ winner: "impostors", reason: "The impostor guessed the secret word." },
+        { guessCorrect: true, guessBy: "impostor" });
+    };
+    document.getElementById("b-guess-wrong").onclick = function () {
+      var blankIdx = -1;
+      S.players.forEach(function (p, i) { if (p.role === "blank" && blankIdx < 0) blankIdx = i; });
+      if (blankIdx >= 0) { S.guessFor = blankIdx; S.phase = "blankguess"; render(); return; }
+      finishRound({ winner: "civilians", reason: "The impostor failed to guess the secret word." }, {});
+    };
+  }
+
+  // Blank's turn: a correct guess wins the game for the blank.
+  function vGuessBlank() {
+    var idx = S.guessFor;
+    root.innerHTML =
+      '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
+      '<img class="avatar" src="' + avatarFor(idx) + '" alt="">' +
+      '<h2 class="screen-title">Blank guess</h2>' +
+      "<p>" + esc(playerLabel(idx)) + ", you saw nothing all game. Name the secret word now " +
+      'to steal the win. (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
+      "</div></div>" +
+      '<button class="btn" id="b-blank-right">' + SKIP_ICON + "Guess correct</button>" +
+      '<button class="btn" id="b-blank-wrong">' + SKIP_ICON + "Guess wrong</button>";
+    document.getElementById("b-blank-right").onclick = function () {
+      finishRound({ winner: "blank", reason: "The blank guessed the secret word." },
+        { guessCorrect: true, guessBy: "blank" });
+    };
+    document.getElementById("b-blank-wrong").onclick = function () {
+      finishRound({ winner: "civilians", reason: "Nobody guessed the secret word." }, {});
     };
   }
 

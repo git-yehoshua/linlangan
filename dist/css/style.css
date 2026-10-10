@@ -9,8 +9,12 @@
   src: url("../fonts/anton-latin.woff2") format("woff2");
 }
 
+/* Fit exactly one screen (dvh accounts for the mobile browser chrome).
+   The card flexes; long content scrolls inside the card, buttons stay put. */
+main { height: 100dvh; min-height: 100dvh; }
+
 /* Frame */
-header { position: relative; padding-top: 0.5rem; }
+header { position: relative; padding-top: 0.5rem; flex: none; }
 .close {
   position: absolute; top: 0; right: 0;
   width: 2.75rem; height: 2.75rem; min-height: 2.75rem;
@@ -23,7 +27,7 @@ header { position: relative; padding-top: 0.5rem; }
 /* Big card */
 .stage {
   --p: 0;
-  position: relative; flex: 1; min-height: 58dvh;
+  position: relative; flex: 1 1 auto; min-height: 0;
   overflow: hidden; border-radius: var(--radius-card);
   background: var(--card, var(--color-white));
   user-select: none; -webkit-user-select: none;
@@ -97,18 +101,21 @@ input.nick {
   font-size: 1.25rem; font-weight: 600; font-family: var(--font-body);
   padding: 0.5rem 1rem; text-align: center;
 }
-/* Small Prev / Next buttons under the main button */
-.mini-nav { display: flex; justify-content: space-between; gap: 0.5rem; }
+/* Small Prev / Next pills (players step): flat gray, white display text */
+.mini-nav { display: flex; justify-content: space-between; gap: 0.5rem; flex: none; }
+.mini-nav.single { justify-content: flex-end; }
 .btn-mini {
-  min-height: var(--tap-target); min-width: 6rem; padding: 0.5rem 1.25rem;
-  border: 0; border-radius: var(--radius-button);
-  background: var(--color-ink); color: var(--color-white);
+  min-height: var(--tap-target); min-width: 7rem; padding: 0.5rem 1.5rem;
+  border: 0; border-radius: 999px;
+  background: #9e9e9e; color: var(--color-white);
   font-family: var(--font-display); font-size: var(--text-button);
-  letter-spacing: 0.03em; text-transform: uppercase; cursor: pointer;
+  letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer;
   transition: transform var(--duration-fast), opacity var(--duration-fast);
 }
 .btn-mini:active:not(:disabled) { transform: scale(0.97); }
 .btn-mini:disabled { opacity: 0.35; cursor: not-allowed; }
+/* Reveal carousel row */
+.reveal-row { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
 /* Added-players review roster */
 .roster { list-style: none; margin: 0.5rem 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.5rem; }
 .roster li {
@@ -121,8 +128,6 @@ input.nick {
 /* Avatars (self-hosted DiceBear, assigned by player order) */
 .avatar { width: 4rem; height: 4rem; }
 .face.centered .avatar { width: 4.5rem; height: 4.5rem; }
-.vote-pill { display: flex; align-items: center; gap: 0.6rem; }
-.vote-pill img { width: 2rem; height: 2rem; flex: none; }
 /* Secondary (back) button */
 .btn.secondary { background: transparent; color: var(--color-ink); }
 .opt-body { display: flex; flex-direction: column; gap: 0.75rem; margin: 0.5rem 0; }
@@ -160,27 +165,13 @@ input.nick {
 .switch[aria-checked="true"] .track { background: var(--color-ink); }
 .switch[aria-checked="true"] .track::after { left: calc(100% - 1.05rem - 2px); background: var(--color-white); }
 
-/* Vote pills */
-.vote-grid { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.75rem 0; }
-.vote-pill {
-  min-height: var(--tap-target); border-radius: var(--radius-pill);
-  border: 2px solid var(--color-ink); background: var(--color-white); color: var(--color-ink);
-  font-size: var(--text-body); font-weight: 600; font-family: var(--font-body);
-  cursor: pointer; padding: 0.5rem 1rem; width: 100%;
-}
-.vote-pill[aria-pressed="true"] { background: var(--pick, var(--color-white)); }
-
-/* Timer + tables */
-.timer {
-  font-family: var(--font-display); font-size: 2.5rem; text-align: center;
-  font-variant-numeric: tabular-nums; line-height: 1;
-}
+/* Tables */
 table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
 th, td { text-align: left; padding: 0.5rem; border-bottom: 2px solid var(--color-ink); }
 th:last-child, td:last-child { text-align: right; }
 .stack { display: flex; flex-direction: column; gap: 0.5rem; }
 .stage-pad { padding: 1.5rem 1.25rem; gap: 0.75rem; position: static; }
-.stage-pad .face { position: static; padding: 0; }
+.stage-pad .face { position: static; padding: 0; overflow-y: auto; min-height: 0; }
 h2.screen-title {
   font-family: var(--font-display); font-size: var(--text-name);
   text-transform: uppercase; margin: 0; line-height: 1; text-align: center;
