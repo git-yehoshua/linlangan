@@ -77,8 +77,13 @@
 
   // Self-hosted DiceBear avatars (dist/avatars). Assigned by player order,
   // never by role — same privacy rule as card colors. Fully offline.
+  // Palette matches the baked-in SVG backgrounds (cycled the same way).
+  var AVATAR_BG = ["#ffe3ea", "#e3edff", "#e2f5e9", "#fdf1d4", "#efe6ff"];
   function avatarFor(i) {
     return "avatars/p" + ((i % 12) + 1) + ".svg";
+  }
+  function avatarBg(i) {
+    return AVATAR_BG[i % AVATAR_BG.length];
   }
 
   function quitToSetup() {
@@ -274,7 +279,7 @@
 
   function vSetupPlayers(cfg) {
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face">' +
+      '<div class="stage stage-pad" style="--card:' + avatarBg(S.setupEdit) + '"><div class="face">' +
       '<p class="step-tag">Step 1 of 3 · Players</p>' +
       '<h2 class="screen-title">Who is playing?</h2>' +
       stepperHtml(cfg) +
@@ -438,7 +443,7 @@
     var last = (i === n - 1);
 
     root.innerHTML =
-      '<div class="stage settle" id="stage" style="--card:' + color + '">' +
+      '<div class="stage swipe settle" id="stage" style="--card:' + color + '">' +
       '<div class="face" id="face" aria-hidden="true">' +
       '<img class="avatar" src="' + avatarFor(i) + '" alt="">' +
       '<h2 class="name">' + esc(name) + "</h2>" + pillHtml + "</div>" +

@@ -70,6 +70,10 @@ header { position: relative; padding-top: 0.5rem; flex: none; }
   font-family: var(--font-display); text-transform: uppercase;
   letter-spacing: 0.03em; font-size: var(--text-button);
 }
+/* Swipe card: capped height so the button below always fits; the word sits
+   mid-card so a 50% swipe reveals it. */
+.stage.swipe { flex: 1 1 auto; min-height: 0; max-height: 54dvh; }
+.stage.swipe .face { justify-content: center; padding: 1.5rem 1.25rem; }
 .stage.settle .sheet { transition: transform var(--duration-spring) cubic-bezier(0.34, 1.56, 0.64, 1); }
 .chev { width: 1.75rem; height: 1.75rem; animation: nudge 1.6s ease-in-out infinite; }
 .stage.used .chev { animation: none; }
