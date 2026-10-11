@@ -579,20 +579,21 @@
     };
   }
 
-  // Screen 5: the reveal. Roles are public now, so the pink card is safe.
+  // Screen 5: the reveal. Big avatar, huge name, one role line.
+  // Roles are public now, so the pink card is safe.
   function vImpostorReveal() {
     var imps = impostorIndexes();
     S.guessFor = imps[0];
-    var line = imps.length > 1
-      ? imps.map(function (i) { return playerLabel(i); }).join(" and ") + " were the impostors"
-      : playerLabel(imps[0]) + " was the impostor";
+    var names = imps.map(function (i) { return playerLabel(i); }).join(" and ");
+    var suffix = imps.length > 1 ? "were the impostors" : "was the impostor";
     var faces = imps.map(function (i) {
-      return '<img class="avatar" src="' + avatarFor(i) + '" alt="">';
+      return '<img class="avatar-big" src="' + avatarFor(i) + '" alt="">';
     }).join("");
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#F4B3D4"><div class="face centered">' +
       '<div class="reveal-row">' + faces + "</div>" +
-      '<h2 class="screen-title">' + esc(line) + "</h2>" +
+      '<h2 class="screen-title">' + esc(names) + "</h2>" +
+      "<p><strong>" + esc(suffix) + "</strong></p>" +
       "</div></div>" +
       '<button class="btn" id="b-to-guess">Final guess</button>';
     document.getElementById("b-to-guess").onclick = function () {
