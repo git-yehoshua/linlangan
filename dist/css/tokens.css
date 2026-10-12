@@ -10,6 +10,7 @@
   --color-white: #FFFFFF;        /* word pill */
   --color-muted: #6B6B6B;        /* wordmark, close icon, hints */
   --color-alert: #D62020;        /* "You are the impostor" text only */
+  --color-good: #20924A;         /* correct-guess green */
   --color-focus: #1A1A1A;
 
   /* Player card colors: assigned by player order, NEVER by role */

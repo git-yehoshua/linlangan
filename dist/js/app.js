@@ -142,12 +142,19 @@
   }
 
   // Pill content per role. Pair-mode impostor sees an identical-looking word;
-  // single-mode impostor gets the red alert + category + vague hint; blank gets "???".
+  // single-mode impostor gets the red alert + one combined hint line
+  // ("Hint: Household Flame"); blank gets "???".
+  var SHORT_THEME = {
+    "Food & Drink": "Food", "Home & Household": "Household", "Animals": "Animals",
+    "Travel & Places": "Travel", "Entertainment": "Entertainment", "Work & School": "Work",
+    "Sports & Fitness": "Sports", "Fantasy & Pop Culture": "Fantasy"
+  };
+  function shortTheme(t) { return SHORT_THEME[t] || t; }
   function pillFor(role, word) {
     if (role === "blank") return { cls: "", text: "???" };
     if (role === "civilian") return { cls: "", text: word.civilian };
     if (S.config.mode === "single") {
-      return { cls: "alert", text: "You are the impostor!", sub: word.theme, hint: word.impostor.replace(/^Hint:\s*/, "") };
+      return { cls: "alert", text: "You are the impostor!", hint: shortTheme(word.theme) + " " + word.impostor.replace(/^Hint:\s*/, "") };
     }
     return { cls: "", text: word.impostor };
   }
@@ -278,7 +285,6 @@
   function vSetupPlayers(cfg) {
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:' + avatarBg(S.setupEdit) + '"><div class="face">' +
-      '<p class="step-tag">Step 1 of 3 · Players</p>' +
       '<h2 class="screen-title">Who is playing?</h2>' +
       stepperHtml(cfg) +
       '<img class="avatar-big" src="' + avatarFor(S.setupEdit) + '" alt="">' +
@@ -381,7 +387,6 @@
     var c = roleCounts(cfg.playerCount, cfg.blank);
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#F6EE8A"><div class="face">' +
-      '<p class="step-tag">Step 3 of 3 · Options</p>' +
       '<h2 class="screen-title">Game options</h2>' +
       '<div class="seg mode" role="group" aria-label="Game mode">' +
       segBtn("opt-mode-pair", cfg.mode, "pair", "Word Pair") +
@@ -433,7 +438,6 @@
     var color = S.colors[i];
     var pill = pillFor(S.players[i].role, S.word);
     var pillHtml = '<div class="pill' + (pill.cls ? " " + pill.cls : "") + '">' + esc(pill.text) + "</div>";
-    if (pill.sub) pillHtml += '<p class="sub">Category: ' + esc(pill.sub) + "</p>";
     if (pill.hint) pillHtml += '<p class="sub">Hint: ' + esc(pill.hint) + "</p>";
     var last = (i === n - 1);
 
@@ -517,22 +521,25 @@
     };
   }
 
-  // Screen 3: play. Mint card, starter, round counter, one-line rules.
+  // Screen 3: play. Starter card plus the speaking-order strip, then reveal.
   function vPlay() {
-    var last = S.clueRound >= S.maxRounds;
+    var n = S.players.length;
+    var chips = "";
+    var k;
+    for (k = 0; k < n; k++) {
+      var p = (S.starter + k) % n;
+      chips += '<div class="turn-chip' + (k === 0 ? " lead" : "") + '">' +
+        '<img src="' + avatarFor(p) + '" alt=""><span>' + esc(playerLabel(p)) + "</span></div>";
+    }
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:' + avatarBg(S.starter) + '"><div class="face centered">' +
       '<img class="avatar" src="' + avatarFor(S.starter) + '" alt="">' +
       '<h2 class="screen-title">' + esc(playerLabel(S.starter)) + " starts</h2>" +
-      "<p>One word each. Then reveal.</p>" +
-      '<p class="muted">Clue round ' + S.clueRound + " of " + S.maxRounds +
-      ". Discussion afterwards: about 60&ndash;90s.</p>" +
-      (last ? "" : '<button class="btn" id="b-next-round">Next clue round</button>') +
+      "<p>One word each, in order. Then reveal.</p>" +
+      '<div class="turn-row">' + chips + "</div>" +
       "</div></div>" +
       '<button class="btn" id="b-reveal">Reveal the impostor</button>';
 
-    var nx = document.getElementById("b-next-round");
-    if (nx) nx.onclick = function () { S.clueRound++; render(); };
     document.getElementById("b-reveal").onclick = function () {
       S.phase = "reveal";
       render();
@@ -634,17 +641,22 @@
   }
 
   // Final guess: the revealed impostor names the secret word to steal the win.
+  // Verdict is a red X (wrong) on the left, green check (right) on the right.
+  function guessButtons(rightId, wrongId) {
+    return '<div class="guess-row">' +
+      '<button class="guess-btn wrong" id="' + wrongId + '" aria-label="Wrong guess">&#10005;</button>' +
+      '<button class="guess-btn right" id="' + rightId + '" aria-label="Correct guess">&#10003;</button></div>';
+  }
   function vGuessImpostor() {
     var idx = S.guessFor;
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
       '<img class="avatar" src="' + avatarFor(idx) + '" alt="">' +
-      '<h2 class="screen-title">Final guess</h2>' +
+      '<h2 class="screen-title">Let ' + esc(playerLabel(idx)) + " guess</h2>" +
       "<p>" + esc(playerLabel(idx)) + ", name the secret word now. A correct guess steals " +
       'the win for the impostors. (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
       "</div></div>" +
-      '<button class="btn" id="b-guess-right">Guess correct</button>' +
-      '<button class="btn" id="b-guess-wrong">Guess wrong</button>';
+      guessButtons("b-guess-right", "b-guess-wrong");
     document.getElementById("b-guess-right").onclick = function () {
       finishRound({ winner: "impostors", reason: "The impostor guessed the secret word." },
         { guessCorrect: true, guessBy: "impostor" });
@@ -663,12 +675,11 @@
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:' + S.colors[idx] + '"><div class="face centered">' +
       '<img class="avatar" src="' + avatarFor(idx) + '" alt="">' +
-      '<h2 class="screen-title">Blank guess</h2>' +
+      '<h2 class="screen-title">Let ' + esc(playerLabel(idx)) + " guess</h2>" +
       "<p>" + esc(playerLabel(idx)) + ", you saw nothing all game. Name the secret word now " +
       'to steal the win. (Host: the word is <strong>"' + esc(S.word.civilian) + '"</strong>.)</p>' +
       "</div></div>" +
-      '<button class="btn" id="b-blank-right">Guess correct</button>' +
-      '<button class="btn" id="b-blank-wrong">Guess wrong</button>';
+      guessButtons("b-blank-right", "b-blank-wrong");
     document.getElementById("b-blank-right").onclick = function () {
       finishRound({ winner: "blank", reason: "The blank guessed the secret word." },
         { guessCorrect: true, guessBy: "blank" });
@@ -678,12 +689,39 @@
     };
   }
 
-  function scoreTable() {
-    var rows = S.players.map(function (p, i) {
-      var tag = p.alive ? "" : " (out)";
-      return "<tr><td>" + esc(playerLabel(i)) + esc(tag) + "</td><td>" + p.score + "</td></tr>";
+  // Gamified scoreboard: ranked rows with avatars, leader highlighted.
+  function scoreBoard() {
+    var order = S.players.map(function (p, i) { return i; }).sort(function (a, b) {
+      return S.players[b].score - S.players[a].score;
+    });
+    var rows = order.map(function (i, r) {
+      var pts = S.players[i].score;
+      return '<li class="score-row' + (r === 0 ? " lead" : "") + '">' +
+        '<span class="rank">' + (r + 1) + "</span>" +
+        '<img src="' + avatarFor(i) + '" alt="">' +
+        '<span class="sname">' + esc(playerLabel(i)) + "</span>" +
+        '<span class="pts">' + pts + " pt" + (pts === 1 ? "" : "s") + "</span></li>";
     }).join("");
-    return "<table><tr><th>Player</th><th>Points</th></tr>" + rows + "</table>";
+    return '<ul class="scores">' + rows + "</ul>";
+  }
+
+  // Falling confetti for the result reveal. Skipped for reduced motion.
+  function confettiHtml() {
+    var reduced = (typeof window !== "undefined" && window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (reduced) return "";
+    var colors = ["#D62020", "#F6EE8A", "#88F5F5", "#A9F2B8", "#CDBDF7", "#FFC8A2", "#FFFFFF"];
+    var out = "";
+    var f;
+    for (f = 0; f < 28; f++) {
+      var w = 6 + Math.floor(Math.random() * 6);
+      out += '<i class="confetti" style="left:' + (Math.random() * 100).toFixed(1) +
+        "%;background:" + colors[f % colors.length] +
+        ";width:" + w + "px;height:" + Math.round(w * 1.6) +
+        "px;animation-delay:" + (Math.random() * 2).toFixed(2) +
+        "s;animation-duration:" + (2.5 + Math.random() * 2.5).toFixed(2) + 's"></i>';
+    }
+    return out;
   }
 
   // Screen 5: result. Cyan for civilians, pink for impostors (safe: roles are public now).
@@ -701,11 +739,11 @@
         "\u201D (" + S.word.theme + ")."
       : "Word: \u201C" + S.word.civilian + "\u201D (" + S.word.theme + ").";
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:' + card + '"><div class="face centered">' +
+      '<div class="stage stage-pad" style="--card:' + card + '">' + confettiHtml() + '<div class="face centered">' +
       '<h2 class="screen-title">' + title + "</h2>" +
       "<p><strong>" + whoLine + "</strong></p>" +
       "<p>" + esc(wordsLine) + "</p>" +
-      scoreTable() +
+      scoreBoard() +
       "</div></div>" +
       '<button class="btn" id="b-next-round">Next round</button>' +
       '<button class="btn" id="b-end">End game</button>';
@@ -714,16 +752,10 @@
   }
 
   function vFinal() {
-    var order = S.players.map(function (p, i) { return i; }).sort(function (a, b) {
-      return S.players[b].score - S.players[a].score;
-    });
-    var rows = order.map(function (i) {
-      return "<tr><td>" + esc(playerLabel(i)) + "</td><td>" + S.players[i].score + "</td></tr>";
-    }).join("");
     root.innerHTML =
       '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
       '<h2 class="screen-title">Final scores</h2>' +
-      "<table><tr><th>Player</th><th>Points</th></tr>" + rows + "</table>" +
+      scoreBoard() +
       "</div></div>" +
       '<button class="btn" id="b-again">Play again</button>' +
       '<button class="btn" id="b-setup">Change setup</button>';
