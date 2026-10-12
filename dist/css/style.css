@@ -242,11 +242,12 @@ h2.screen-title {
 .turn-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .turn-chip.lead { border-color: var(--color-alert); box-shadow: 0 0 0 2px var(--color-alert); }
 
-/* Final guess verdict: red X left, green check right. */
+/* Final guess verdict: big circles like the stepper, red X left, green check right. */
 .guess-row { display: flex; gap: 1rem; justify-content: space-between; flex: none; }
 .guess-btn {
-  flex: 1; min-height: 4.5rem; border: 0; border-radius: var(--radius-button);
-  color: #fff; font-size: 2rem; font-weight: 700; cursor: pointer;
+  width: 5.5rem; height: 5.5rem; min-height: 5.5rem; flex: none;
+  border-radius: 50%; border: 3px solid var(--color-ink);
+  color: #fff; font-size: 2.25rem; font-weight: 700; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: transform var(--duration-fast), opacity var(--duration-fast);
 }
