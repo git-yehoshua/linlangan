@@ -142,12 +142,12 @@
   }
 
   // Pill content per role. Pair-mode impostor sees an identical-looking word;
-  // single-mode impostor gets the red alert + category; blank gets "???".
+  // single-mode impostor gets the red alert + category + vague hint; blank gets "???".
   function pillFor(role, word) {
     if (role === "blank") return { cls: "", text: "???" };
     if (role === "civilian") return { cls: "", text: word.civilian };
     if (S.config.mode === "single") {
-      return { cls: "alert", text: "You are the impostor!", sub: word.impostor.replace(/^Hint:\s*/, "") };
+      return { cls: "alert", text: "You are the impostor!", sub: word.theme, hint: word.impostor.replace(/^Hint:\s*/, "") };
     }
     return { cls: "", text: word.impostor };
   }
@@ -434,6 +434,7 @@
     var pill = pillFor(S.players[i].role, S.word);
     var pillHtml = '<div class="pill' + (pill.cls ? " " + pill.cls : "") + '">' + esc(pill.text) + "</div>";
     if (pill.sub) pillHtml += '<p class="sub">Category: ' + esc(pill.sub) + "</p>";
+    if (pill.hint) pillHtml += '<p class="sub">Hint: ' + esc(pill.hint) + "</p>";
     var last = (i === n - 1);
 
     root.innerHTML =
@@ -547,54 +548,84 @@
   }
 
   function vRevealCarousel() {
-    var order = shuffle(S.players.map(function (p, i) { return i; }));
     var imps = impostorIndexes();
-    // Land the final frame on an impostor.
-    var frames = Math.ceil(REVEAL_MS / 110);
-    order[(frames - 1) % order.length] = imps[0];
+    var target = imps[0];
+    // Build a long strip of player cards; force the last card to be the impostor
+    // (second-to-last is forced non-impostor for a last-moment fake-out).
+    var N = 30;
+    var deck = [];
+    var k;
+    for (k = 0; k < N - 1; k++) {
+      deck.push(Math.floor(Math.random() * S.players.length));
+    }
+    if (deck[N - 2] === target) {
+      deck[N - 2] = (target + 1) % S.players.length;
+    }
+    deck.push(target);
+    var cards = deck.map(function (p) {
+      return '<div class="au-card" style="background:' + avatarBg(p) + '">' +
+        '<img src="' + avatarFor(p) + '" alt="">' +
+        "<p>" + esc(playerLabel(p)) + "</p></div>";
+    }).join("");
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#FFFFFF"><div class="face centered">' +
-      '<p class="step-tag">Finding the impostor</p>' +
-      '<img class="avatar-big" id="reveal-avatar" src="' + avatarFor(order[0]) + '" alt="">' +
-      '<h2 class="screen-title" id="reveal-name">?</h2>' +
-      "</div></div>" +
+      '<div class="stage au-reveal"><h2 class="au-title">Impostor</h2>' +
+      '<div class="au-band" id="au-band"><div class="au-track" id="au-track">' + cards + "</div>" +
+      '<div class="au-pointer"></div></div>' +
+      '<p class="au-name" id="reveal-name">Finding the impostor&hellip;</p></div>' +
       '<button class="btn secondary" id="b-skip-reveal">Skip</button>';
 
     var reduced = (typeof window !== "undefined" && window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     if (reduced) { S.phase = "impostor"; render(); return; }
-    var img = document.getElementById("reveal-avatar");
-    var start = Date.now();
-    function frame() {
-      var t = Date.now() - start;
-      var p = order[Math.floor(t / 110) % order.length];
-      if (img) img.setAttribute("src", avatarFor(p));
-      if (t >= REVEAL_MS) { S.phase = "impostor"; render(); return; }
-      S.timerId = setTimeout(frame, 110);
+    var band = document.getElementById("au-band");
+    var track = document.getElementById("au-track");
+    var CARD_W = 92, GAP = 10, STEP = CARD_W + GAP;
+    function finish() { S.phase = "impostor"; render(); }
+    // Center cards at both ends: pad so first and last cards can sit mid-band.
+    function layout() {
+      var bandW = band ? band.clientWidth : 300;
+      var pad = Math.max(0, bandW / 2 - CARD_W / 2);
+      track.style.paddingLeft = pad + "px";
+      track.style.paddingRight = pad + "px";
+      return (N - 1) * STEP;
     }
-    S.timerId = setTimeout(frame, 110);
+    var distance = layout();
+    // Start flush left, then ease-out scroll to the impostor card.
+    track.style.transform = "translateX(0px)";
+    void track.offsetWidth; // reflow so the transition runs
+    track.style.transition = "transform " + REVEAL_MS + "ms cubic-bezier(0.15, 0.85, 0.25, 1)";
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          track.style.transform = "translateX(" + (-distance) + "px)";
+        });
+      });
+    } else {
+      track.style.transform = "translateX(" + (-distance) + "px)";
+    }
+    S.timerId = setTimeout(finish, REVEAL_MS + 150);
     document.getElementById("b-skip-reveal").onclick = function () {
       S.phase = "impostor";
       render();
     };
   }
 
-  // Screen 5: the reveal. Big avatar, huge name, one role line.
-  // Roles are public now, so the pink card is safe.
+  // Screen 5: the reveal. Among Us look: black screen, red IMPOSTOR title,
+  // impostor avatar(s) centered on the red band. Roles are public now.
   function vImpostorReveal() {
     var imps = impostorIndexes();
     S.guessFor = imps[0];
     var names = imps.map(function (i) { return playerLabel(i); }).join(" and ");
     var suffix = imps.length > 1 ? "were the impostors" : "was the impostor";
     var faces = imps.map(function (i) {
-      return '<img class="avatar-big" src="' + avatarFor(i) + '" alt="">';
+      return '<div class="au-face" style="background:' + avatarBg(i) + '">' +
+        '<img src="' + avatarFor(i) + '" alt=""></div>';
     }).join("");
     root.innerHTML =
-      '<div class="stage stage-pad" style="--card:#F4B3D4"><div class="face centered">' +
+      '<div class="stage au-reveal"><h2 class="au-title">Impostor</h2>' +
       '<div class="reveal-row">' + faces + "</div>" +
-      '<h2 class="screen-title">' + esc(names) + "</h2>" +
-      "<p><strong>" + esc(suffix) + "</strong></p>" +
-      "</div></div>" +
+      '<h2 class="au-name-big">' + esc(names) + "</h2>" +
+      "<p class=\"au-sub\">" + esc(suffix) + "</p></div>" +
       '<button class="btn" id="b-to-guess">Final guess</button>';
     document.getElementById("b-to-guess").onclick = function () {
       S.phase = "guess";

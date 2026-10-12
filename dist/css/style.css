@@ -122,6 +122,53 @@ input.nick {
 .btn-mini:disabled { opacity: 0.35; cursor: not-allowed; }
 /* Reveal carousel row */
 .reveal-row { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+
+/* Among Us-style impostor reveal (scoped exception to the no-gradient/
+   no-shadow rule: this screen is intentionally dark with a red glow). */
+.au-reveal {
+  position: relative; flex: 1 1 auto; min-height: 52dvh;
+  overflow: hidden; border-radius: var(--radius-card);
+  background: #050505; color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1rem; padding: 1.5rem 0;
+}
+.au-title {
+  font-family: var(--font-display); text-transform: uppercase;
+  color: #ff2222; font-size: 2.75rem; letter-spacing: 0.06em; line-height: 1; margin: 0;
+  text-shadow: 0 0 18px rgba(255, 30, 30, 0.65);
+}
+.au-band {
+  position: relative; width: 100%; overflow: hidden;
+  background: #1a0000; border-top: 2px solid #5a0000; border-bottom: 2px solid #5a0000;
+}
+.au-band::before {
+  content: ""; position: absolute; inset: 6px 0; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,0,0,0) 0%, rgba(255,20,20,0.55) 50%, rgba(255,0,0,0) 100%);
+}
+.au-track { display: flex; gap: 10px; padding: 14px 0; width: max-content; will-change: transform; }
+.au-card {
+  width: 92px; flex: 0 0 92px; border-radius: 14px; border: 2px solid #000;
+  padding: 0.5rem 0.25rem; text-align: center;
+}
+.au-card img { width: 3.5rem; height: 3.5rem; display: block; margin: 0 auto; }
+.au-card p { margin: 0.3rem 0 0; font-weight: 700; font-size: 0.8rem; color: #111;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.au-pointer {
+  position: absolute; left: 50%; top: 0; bottom: 0; width: 3px;
+  background: #ff2222; transform: translateX(-50%);
+  box-shadow: 0 0 10px rgba(255, 30, 30, 0.9);
+}
+.au-name { color: #fff; font-weight: 700; margin: 0; min-height: 1.5em; }
+.au-name-big {
+  font-family: var(--font-display); text-transform: uppercase;
+  color: #fff; font-size: 2rem; margin: 0; line-height: 1; text-align: center;
+}
+.au-sub { color: #ff8a8a; margin: 0; font-weight: 700; }
+.au-face {
+  width: 5rem; height: 5rem; border-radius: 50%; padding: 0.4rem;
+  border: 2px solid #ff2222; display: flex; align-items: center; justify-content: center;
+}
+.au-face img { width: 100%; height: 100%; }
 /* Added-players review roster */
 .roster { list-style: none; margin: 0.25rem 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 0.4rem; }
 .roster li {
