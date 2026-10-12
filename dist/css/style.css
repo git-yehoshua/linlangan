@@ -246,14 +246,14 @@ h2.screen-title {
 .guess-row { display: flex; gap: 1rem; justify-content: space-between; flex: none; }
 .guess-btn {
   width: 5.5rem; height: 5.5rem; min-height: 5.5rem; flex: none;
-  border-radius: 50%; border: 3px solid var(--color-ink);
-  color: #fff; font-size: 2.25rem; font-weight: 700; cursor: pointer;
+  border-radius: 50%; border: 7px solid var(--color-ink);
+  background: #fff; font-size: 2.25rem; font-weight: 700; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: transform var(--duration-fast), opacity var(--duration-fast);
 }
 .guess-btn:active { transform: scale(0.96); }
-.guess-btn.wrong { background: var(--color-alert); }
-.guess-btn.right { background: var(--color-good); }
+.guess-btn.wrong { border-color: var(--color-alert); color: var(--color-alert); }
+.guess-btn.right { border-color: var(--color-good); color: var(--color-good); }
 
 /* Falling confetti (result screen). Pieces are generated in JS. */
 .confetti {
